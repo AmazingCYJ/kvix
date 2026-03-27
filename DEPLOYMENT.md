@@ -101,20 +101,20 @@ chmod 755 /opt/kvix/bin/kvix-http
 
 ```bash
 cat > /etc/kvix/kvix-http.env <<'EOF'
-KVIX_HTTP_ADDR=0.0.0.0:8080
+KVIX_HTTP_ADDR=0.0.0.0:8001
 KVIX_HTTP_DATA_DIR=/var/lib/kvix-http/data
 EOF
 ```
 
 这两个变量的意义分别是：
 
-- `0.0.0.0:8080`：监听所有网卡，方便外部访问
+- `0.0.0.0:8001`：监听所有网卡，方便外部访问
 - `/var/lib/kvix-http/data`：将底层数据库持久化到固定目录
 
 如果你希望只允许本机访问，可以改成：
 
 ```text
-127.0.0.1:8080
+127.0.0.1:8001
 ```
 
 ## 6. 配置 systemd 服务
@@ -162,7 +162,7 @@ systemctl --no-pager --full status kvix.service
 在服务器本机执行：
 
 ```bash
-curl http://127.0.0.1:8080/healthz
+curl http://127.0.0.1:8001/healthz
 ```
 
 预期返回：
@@ -176,7 +176,7 @@ curl http://127.0.0.1:8080/healthz
 先写入一条记录：
 
 ```bash
-curl -X POST http://127.0.0.1:8080/api/v1/entries \
+curl -X POST http://127.0.0.1:8001/api/v1/entries \
   -H 'Content-Type: application/json' \
   -d '{"key":"deploy-check","value":"ok"}'
 ```
@@ -190,7 +190,7 @@ systemctl restart kvix.service
 重启后再次读取：
 
 ```bash
-curl http://127.0.0.1:8080/api/v1/entries/deploy-check
+curl http://127.0.0.1:8001/api/v1/entries/deploy-check
 ```
 
 如果仍然能读到原值，说明：
@@ -237,9 +237,9 @@ KVIX_HTTP_DATA_DIR
 
 需要检查：
 
-- `KVIX_HTTP_ADDR` 是否为 `0.0.0.0:8080`
-- 操作系统防火墙是否放行 `8080`
-- 云厂商安全组是否放行 `8080`
+- `KVIX_HTTP_ADDR` 是否为 `0.0.0.0:8001`
+- 操作系统防火墙是否放行 `8001`
+- 云厂商安全组是否放行 `8001`
 
 #### 服务起不来
 
@@ -258,7 +258,7 @@ KVIX_HTTP_DATA_DIR
 - 二进制路径：`/opt/kvix/bin/kvix-http`
 - 环境文件：`/etc/kvix/kvix-http.env`
 - 数据目录：`/var/lib/kvix-http/data`
-- 监听地址：`0.0.0.0:8080`
+- 监听地址：`0.0.0.0:8001`
 
 如果你要在其他机器复用这套部署方式，通常只需要改：
 
