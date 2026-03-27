@@ -48,7 +48,7 @@ func Open(options Options) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(entries) == 0 {
+	if isInitialDataDir(entries) {
 		isInitial = true
 	}
 
@@ -123,4 +123,19 @@ func checkOptions(options Options) error {
 		return errors.New("data file size must be greater than zero")
 	}
 	return nil
+}
+
+// isInitialDataDir 判断当前目录是否仍然可以视为“空库首次初始化”。
+// 这里要忽略运行时自动创建的 flock 锁文件，否则一个刚创建的空目录也会被误判成“已有历史状态”。
+func isInitialDataDir(entries []os.DirEntry) bool {
+	if len(entries) == 0 {
+		return true
+	}
+	for _, entry := range entries {
+		if entry.Name() == fileLockName {
+			continue
+		}
+		return false
+	}
+	return true
 }

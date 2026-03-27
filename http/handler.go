@@ -4,17 +4,19 @@ import (
 	"errors"
 	kvix "kvix"
 	common "kvix/common"
+	redisstore "kvix/redis"
 
 	"github.com/gofiber/fiber/v2"
 )
 
 // server 负责把 HTTP 请求转换为对 kvix DB 的调用，并把领域结果映射为响应 DTO。
 type server struct {
-	db *kvix.DB
+	db         *kvix.DB
+	redisStore *redisstore.RedisDataStore
 }
 
-func newServer(db *kvix.DB) *server {
-	return &server{db: db}
+func newServer(db *kvix.DB, redisStore *redisstore.RedisDataStore) *server {
+	return &server{db: db, redisStore: redisStore}
 }
 
 func (s *server) health(c *fiber.Ctx) error {

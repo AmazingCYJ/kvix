@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	common "kvix/common"
+	redisstore "kvix/redis"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -25,6 +26,9 @@ func newHTTPError(status int, message string) error {
 func mapDomainError(err error) error {
 	if errors.Is(err, common.ErrKeyNotFound) {
 		return newHTTPError(fiber.StatusNotFound, "key not found")
+	}
+	if errors.Is(err, redisstore.ErrWrongType) {
+		return newHTTPError(fiber.StatusBadRequest, "wrong type")
 	}
 	return err
 }
