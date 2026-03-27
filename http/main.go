@@ -16,6 +16,7 @@ import (
 
 const defaultListenAddr = "127.0.0.1:8080"
 
+// main 启动 kvix HTTP 示例服务，并在进程退出时优雅关闭。
 func main() {
 	db, cleanup, err := openTempDB()
 	if err != nil {
@@ -50,7 +51,9 @@ func main() {
 	}
 }
 
+// openTempDB 为 HTTP 示例创建一个临时目录数据库，并返回清理函数。
 func openTempDB() (*kvix.DB, func(), error) {
+	// 1. 基于默认配置创建临时目录，避免示例服务污染用户已有数据目录。
 	option := common.DefaultOptions
 	dir, err := os.MkdirTemp("", "kvix-http")
 	if err != nil {
@@ -58,12 +61,14 @@ func openTempDB() (*kvix.DB, func(), error) {
 	}
 	option.DirPath = dir
 
+	// 2. 打开数据库；如果失败，立即回收临时目录。
 	db, err := kvix.Open(option)
 	if err != nil {
 		_ = os.RemoveAll(dir)
 		return nil, nil, err
 	}
 
+	// 3. 返回清理函数，供调用方在退出时统一删除临时目录。
 	cleanup := func() {
 		if err := os.RemoveAll(dir); err != nil {
 			log.Printf("failed to remove temp dir %s: %v", dir, err)
@@ -74,6 +79,7 @@ func openTempDB() (*kvix.DB, func(), error) {
 	return db, cleanup, nil
 }
 
+// errorHandler 统一把领域错误和 Fiber 错误转换为固定 JSON 响应。
 func errorHandler(c *fiber.Ctx, err error) error {
 	var httpErr *httpError
 	if errors.As(err, &httpErr) {

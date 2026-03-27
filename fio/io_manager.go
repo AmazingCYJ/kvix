@@ -29,7 +29,10 @@ type IOManager interface {
 	Size() (int64, error)
 }
 
-// NewIOManager 创建一个新的 IOManager 实例，负责管理文件的读写操作。
+// NewIOManager 根据配置选择具体的 IO 实现。
+// 1. 标准文件 IO 适合常规读写路径。
+// 2. mmap IO 适合启动阶段或读多写少的只读场景。
+// 3. 若类型不受支持，则立即返回错误，避免上层带着错误配置继续运行。
 func NewIOManager(filePath string, ioType FileIOType) (IOManager, error) {
 	switch ioType {
 	case StandardFIO:

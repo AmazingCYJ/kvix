@@ -11,10 +11,12 @@ var setMemberPlaceholder = []byte{1}
 
 // SAdd 通过 set:<key>:<version>:<member> 子键记录元素，metadata.size 始终反映这些子键的个数。
 func (rds *RedisDataStore) SAdd(key []byte, members ...[]byte) (uint32, error) {
+	// 1. 没有成员输入时直接返回 0，避免制造空集合元数据。
 	if len(members) == 0 {
 		return 0, nil
 	}
 
+	// 2. 加载或创建集合 metadata，确定当前生效版本。
 	meta, err := rds.findMetadata(key)
 	if err != nil {
 		return 0, err
@@ -33,6 +35,7 @@ func (rds *RedisDataStore) SAdd(key []byte, members ...[]byte) (uint32, error) {
 		next = *meta
 	}
 
+	// 3. 先去重，再过滤出当前版本下还不存在的成员。
 	unique := uniqueMembers(members)
 	newMembers := make([][]byte, 0, len(unique))
 	for _, member := range unique {
@@ -50,6 +53,7 @@ func (rds *RedisDataStore) SAdd(key []byte, members ...[]byte) (uint32, error) {
 		return 0, nil
 	}
 
+	// 4. 通过 WriteBatch 一次写入所有新增成员，并同步更新 metadata.size。
 	next.size += uint32(len(newMembers))
 	wb := rds.db.NewWriteBatch(common.DefaultWriteBatchOptions)
 	for _, member := range newMembers {

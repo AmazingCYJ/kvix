@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 )
 
+// DataFile 表示一个已经打开的数据文件，负责日志记录的读写、刷盘和 IO 管理器切换。
+// kvix 会同时维护活跃文件和若干只读旧文件，内存索引中的位置最终都落到某个 DataFile 上。
 type DataFile struct {
 	FileID    uint32        // 文件ID
 	WriteOff  int64         // 当前写入偏移
@@ -49,9 +51,10 @@ func GetDataFileName(dirPath string, fileID uint32) string {
 	return filepath.Join(dirPath, fmt.Sprintf("%09d", fileID)+DataFileSuffix)
 }
 
-// WriteHintRecord 将 Hint 记录写入 Hint 文件
+// WriteHintRecord 将 hint 记录写入 hint 文件，供 merge 后快速重建索引。
 func (df *DataFile) WriteHintRecord(key []byte, pos *LogRecordPos) error {
-	// Hint记录格式: Key Size (4 bytes) | Key (variable) | FileID (4 bytes) | Offset (8 bytes)
+	// 1. 将索引位置信息编码成普通日志记录的 value，复用现有日志编码格式。
+	// 2. 使用 key 作为 hint 键，保证恢复阶段可以直接按 key 重建索引。
 	record := &LogRecord{
 		Key:   key,
 		Value: EncodeLogRecordPos(pos),
@@ -91,9 +94,9 @@ func (df *DataFile) Write(p []byte) error {
 	return nil
 }
 
-// ReadLogRecord 从数据文件指定偏移读取一条日志记录，返回LogRecord、记录大小和错误信息。
+// ReadLogRecord 从指定偏移读取一条日志记录，并返回记录内容与占用字节数。
 func (df *DataFile) ReadLogRecord(off int64) (*LogRecord, int64, error) {
-	//获取文件大小，确保读取不会越界
+	// 1. 先获取文件大小，避免偏移越界或读过文件尾部。
 	size, err := df.IoManager.Size()
 	if err != nil {
 		return nil, 0, err
@@ -106,12 +109,12 @@ func (df *DataFile) ReadLogRecord(off int64) (*LogRecord, int64, error) {
 	if off+maxLogRecordHeardSize > size {
 		headerBytes = size - off
 	}
-	//1.读取记录头部，获取CRC、KeySize、ValueSize等信息
+	// 2. 读取记录头，确认 CRC、记录类型以及 key/value 的长度。
 	headerBuf, err := df.readNBytes(headerBytes, off)
 	if err != nil {
 		return nil, 0, err
 	}
-	//2.解析记录头部，获取KeySize和ValueSize
+	// 3. 解析头部，计算整条记录的物理长度。
 	header, headerSize := decodeLogRecord(headerBuf)
 	if header == nil {
 		return nil, 0, fmt.Errorf("failed to decode log record header at offset %d", off)
@@ -119,17 +122,16 @@ func (df *DataFile) ReadLogRecord(off int64) (*LogRecord, int64, error) {
 	if header.crc == 0 && header.keySize == 0 && header.valueSize == 0 {
 		return nil, 0, io.EOF
 	}
-	//3.取出key和value的长度
+	// 4. 根据 key/value 长度决定是否继续读取载荷区。
 	keySize, valueSize := int64(header.keySize), int64(header.valueSize)
 	var recordSize = headerSize + keySize + valueSize
-	//4.读取key和value数据
 	var logRecord *LogRecord
 	if keySize > 0 || valueSize > 0 {
 		kvBuf, err := df.readNBytes(keySize+valueSize, off+headerSize)
 		if err != nil {
 			return nil, 0, err
 		}
-		//4.1解析key和value数据
+		// 4.1 将载荷区按 key/value 切分回 LogRecord。
 		logRecord = &LogRecord{
 			Key:   kvBuf[:keySize],
 			Value: kvBuf[keySize:],
@@ -137,13 +139,11 @@ func (df *DataFile) ReadLogRecord(off int64) (*LogRecord, int64, error) {
 		}
 		return logRecord, recordSize, nil
 	}
-	// 5.校验数据完整性
-	// 5.1计算CRC并与头部CRC进行比较,如果不匹配则返回错误
+	// 5. 对空载荷记录执行 CRC 校验，避免读取到损坏数据。
 	crc := getLogRecordCRC(logRecord, headerBuf[crc32.Size:headerSize])
 	if crc != header.crc {
 		return nil, 0, ErrInvlidCRC
 	}
-	// 6.返回LogRecord、记录大小和nil错误
 	return logRecord, recordSize, nil
 }
 

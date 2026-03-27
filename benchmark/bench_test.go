@@ -24,8 +24,8 @@ var benchmarkCases = []benchmarkCase{
 	{name: "4KB", valueSize: 4096},
 }
 
+// benchmarkOptions 固定 benchmark 配置，避免不同运行之间的结果语义漂移。
 func benchmarkOptions(dir string) common.Options {
-	// 显式固定 benchmark 配置，避免不同运行之间的结果语义漂移。
 	return common.Options{
 		DirPath:            dir,
 		DataFileSize:       benchmarkDataFileSize,
@@ -37,6 +37,7 @@ func benchmarkOptions(dir string) common.Options {
 	}
 }
 
+// openBenchmarkDB 为单个 benchmark 子用例打开隔离目录数据库。
 func openBenchmarkDB(b *testing.B) (*kvix.DB, string) {
 	b.Helper()
 	// 使用 b.TempDir 为每个子基准隔离目录，避免文件锁和目录状态互相污染。
@@ -49,6 +50,7 @@ func openBenchmarkDB(b *testing.B) (*kvix.DB, string) {
 	return db, dir
 }
 
+// reopenBenchmarkDB 复用已有目录重新打开数据库，用于覆盖重启后的读路径。
 func reopenBenchmarkDB(b *testing.B, dir string) *kvix.DB {
 	b.Helper()
 
@@ -59,6 +61,7 @@ func reopenBenchmarkDB(b *testing.B, dir string) *kvix.DB {
 	return db
 }
 
+// mustCloseBenchmarkDB 在 benchmark 里统一处理关闭失败。
 func mustCloseBenchmarkDB(b *testing.B, db *kvix.DB) {
 	b.Helper()
 	if err := db.Close(); err != nil {
@@ -66,6 +69,7 @@ func mustCloseBenchmarkDB(b *testing.B, db *kvix.DB) {
 	}
 }
 
+// makeBenchmarkValue 生成固定大小的测试 value。
 func makeBenchmarkValue(size int) []byte {
 	if size <= 0 {
 		return nil
@@ -78,6 +82,7 @@ func makeBenchmarkValue(size int) []byte {
 	return value
 }
 
+// makeBenchmarkKeys 生成稳定、有序的 benchmark key 集合。
 func makeBenchmarkKeys(n int) [][]byte {
 	if n <= 0 {
 		return nil
@@ -94,6 +99,7 @@ func makeBenchmarkKeys(n int) [][]byte {
 	return keys
 }
 
+// seedBenchmarkData 在计时区间外预写入测试数据。
 func seedBenchmarkData(b *testing.B, db *kvix.DB, keys [][]byte, value []byte) {
 	b.Helper()
 	for i := range keys {
@@ -103,6 +109,7 @@ func seedBenchmarkData(b *testing.B, db *kvix.DB, keys [][]byte, value []byte) {
 	}
 }
 
+// BenchmarkKvixPut 测量不同 value 大小下的写入吞吐。
 func BenchmarkKvixPut(b *testing.B) {
 	for _, tc := range benchmarkCases {
 		tc := tc
@@ -127,6 +134,7 @@ func BenchmarkKvixPut(b *testing.B) {
 	}
 }
 
+// BenchmarkKvixGet 测量预热后的随机读取成本。
 func BenchmarkKvixGet(b *testing.B) {
 	for _, tc := range benchmarkCases {
 		tc := tc
@@ -159,6 +167,7 @@ func BenchmarkKvixGet(b *testing.B) {
 	}
 }
 
+// BenchmarkKvixReadAfterLoad 测量重启恢复后的读取路径。
 func BenchmarkKvixReadAfterLoad(b *testing.B) {
 	for _, tc := range benchmarkCases {
 		tc := tc

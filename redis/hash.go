@@ -13,6 +13,7 @@ import (
 
 // HSet 将 field 写入 hash 结构，返回是否新增字段。新增字段和 metadata 更新需通过 WriteBatch 原子写 meta:<key> + hash 子键。
 func (rds *RedisDataStore) HSet(key, field, value []byte) (bool, error) {
+	// 1. 加载 metadata，决定是新建 hash 还是在现有版本上继续写 field。
 	meta, err := rds.findMetadata(key)
 	if err != nil {
 		return false, err
@@ -23,6 +24,7 @@ func (rds *RedisDataStore) HSet(key, field, value []byte) (bool, error) {
 	isNewField := false
 
 	if meta == nil {
+		// 2.1 首次写入时创建 hash 类型 metadata，并把 size 初始化为 1。
 		next, err = rds.newMetadataForType(key, redisTypeHash)
 		if err != nil {
 			return false, err
@@ -31,6 +33,7 @@ func (rds *RedisDataStore) HSet(key, field, value []byte) (bool, error) {
 		needMetaWrite = true
 		isNewField = true
 	} else {
+		// 2.2 已存在 key 时先校验类型，再检查 field 是覆盖还是新增。
 		if err := expectType(meta, redisTypeHash); err != nil {
 			return false, err
 		}
@@ -52,6 +55,7 @@ func (rds *RedisDataStore) HSet(key, field, value []byte) (bool, error) {
 	dataKey := hashDataKey(key, next.version, field)
 
 	if needMetaWrite {
+		// 3. 新字段需要原子写 metadata + field 数据，确保 size 与子键集合一致。
 		wb := rds.db.NewWriteBatch(common.DefaultWriteBatchOptions)
 		if err := wb.Put(metaKey(key), encodeMetadata(next)); err != nil {
 			return false, err
@@ -65,6 +69,7 @@ func (rds *RedisDataStore) HSet(key, field, value []byte) (bool, error) {
 		return isNewField, nil
 	}
 
+	// 4. 覆盖已有 field 时只更新子键 payload，不改 metadata.size。
 	if err := rds.db.Put(dataKey, value); err != nil {
 		return false, err
 	}

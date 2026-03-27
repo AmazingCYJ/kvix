@@ -14,7 +14,8 @@ const (
 	redisTypeZSet   redisType = 5
 )
 
-// metadata 描述逻辑 key 的类型、TTL、版本以及集合边界等信息。
+// metadata 描述逻辑 key 的类型、TTL、版本以及复合结构边界。
+// Redis 风格命令在真正读写子键前，都先读取这份元数据来做类型检查和过期判断。
 type metadata struct {
 	typ      redisType
 	expireAt int64

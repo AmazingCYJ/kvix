@@ -9,6 +9,7 @@ import (
 // 列表元数据通过 head/tail 维护逻辑索引边界：head 指向最左元素，tail 指向最右元素，
 // dataKey 的索引就是 head+offset，保证逻辑序列与物理键顺序一致。
 func (rds *RedisDataStore) LPush(key []byte, values ...[]byte) (uint32, error) {
+	// 1. 空参数直接返回当前长度，保持与 Redis 风格接口兼容。
 	if len(values) == 0 {
 		meta, err := rds.loadListMetadata(key)
 		if err != nil {
@@ -20,6 +21,7 @@ func (rds *RedisDataStore) LPush(key []byte, values ...[]byte) (uint32, error) {
 		return meta.size, nil
 	}
 
+	// 2. 读取或创建列表元数据，必要时初始化 head/tail 边界。
 	meta, err := rds.findMetadata(key)
 	if err != nil {
 		return 0, err
@@ -45,6 +47,7 @@ func (rds *RedisDataStore) LPush(key []byte, values ...[]byte) (uint32, error) {
 		}
 	}
 
+	// 3. 每写入一个元素就向左扩展 head，并把元素写到当前版本的子键上。
 	wb := rds.db.NewWriteBatch(common.DefaultWriteBatchOptions)
 	for _, value := range values {
 		if next.size == 0 {
@@ -58,6 +61,7 @@ func (rds *RedisDataStore) LPush(key []byte, values ...[]byte) (uint32, error) {
 		}
 		next.size++
 	}
+	// 4. 最后统一回写 metadata，保证 head/tail/size 与批量写入结果一致。
 	if err := wb.Put(metaKey(key), encodeMetadata(next)); err != nil {
 		return 0, err
 	}

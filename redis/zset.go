@@ -18,8 +18,9 @@ var (
 	errInvalidZSetScoreEncoding = errors.New("redis: invalid zset score encoding")
 )
 
-// zset 通过 dict 索引记录 member -> score，同时通过 score 索引按 score/ member 字典序排好序，双轨结构确保 ZRange 能稳定取得排序结果。
+// zset 通过 dict 索引记录 member -> score，同时通过 score 索引按 score/member 字典序排好序，双轨结构确保 ZRange 能稳定取得排序结果。
 func (rds *RedisDataStore) ZAdd(key []byte, score float64, member []byte) (bool, error) {
+	// 1. 先校验 score，并读取当前 zset metadata。
 	if math.IsNaN(score) {
 		return false, ErrZSetScoreNaN
 	}
@@ -41,6 +42,7 @@ func (rds *RedisDataStore) ZAdd(key []byte, score float64, member []byte) (bool,
 		next = *meta
 	}
 
+	// 2. dict 索引负责 member -> score，先看当前 member 是否已存在。
 	dictKey := zsetDictKey(key, next.version, member)
 	encodedScore := encodeZSetScore(score)
 	existing, getErr := rds.db.Get(dictKey)
@@ -48,6 +50,7 @@ func (rds *RedisDataStore) ZAdd(key []byte, score float64, member []byte) (bool,
 		return false, getErr
 	}
 	if getErr == nil {
+		// 2.1 已存在 member 时只更新 score，并同步替换排序索引。
 		if bytes.Equal(existing, encodedScore) {
 			return false, nil
 		}
@@ -76,6 +79,7 @@ func (rds *RedisDataStore) ZAdd(key []byte, score float64, member []byte) (bool,
 		return false, nil
 	}
 
+	// 3. 新 member 需要同时写入 dict 索引、score 索引和 metadata.size。
 	wb := rds.db.NewWriteBatch(common.DefaultWriteBatchOptions)
 	if err := wb.Put(dictKey, encodedScore); err != nil {
 		return false, err

@@ -8,6 +8,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/recover"
 )
 
+// newApp 创建 HTTP 应用，并注册统一错误处理、中间件和业务路由。
 func newApp(db *kvix.DB) *fiber.App {
 	app := fiber.New(fiber.Config{
 		AppName:      "kvix-http",

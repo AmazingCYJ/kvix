@@ -35,21 +35,21 @@ func GetDiskFreeSpace() (uint64, error) {
 	return stat.Bavail * uint64(stat.Bsize), nil
 }
 
-// CopyDir 复制目录,srcDir 是源目录路径，destDir 是目标目录路径，excluded 是一个字符串切片，包含不需要复制的文件或目录的名称。
+// CopyDir 递归复制目录，并按名称模式排除不需要继承的文件或子目录。
 func CopyDir(srcDir, destDir string, exclude []string) error {
-	//1.检查源目录是否存在
+	// 1. 先准备目标目录，确保后续 Walk 过程中可以直接落盘文件。
 	if _, err := os.Stat(destDir); os.IsNotExist(err) {
 		if err := os.MkdirAll(destDir, os.ModePerm); err != nil {
 			return err
 		}
 	}
-	//2.遍历源目录下的所有文件和子目录
+	// 2. 遍历源目录，按排除规则跳过不需要复制的节点。
 	filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
 		fileName := strings.Replace(path, srcDir, "", 1)
 		if fileName == "" || fileName == string(os.PathSeparator) {
 			return nil
 		}
-		// 检查是否在排除列表中
+		// 2.1 目录命中排除规则时直接跳过整棵子树，避免复制无关文件。
 		for _, e := range exclude {
 			matched, err := filepath.Match(e, info.Name())
 			if err != nil {
@@ -62,6 +62,7 @@ func CopyDir(srcDir, destDir string, exclude []string) error {
 		if info.IsDir() {
 			return os.MkdirAll(filepath.Join(destDir, fileName), info.Mode())
 		}
+		// 2.2 普通文件按原路径关系复制，保持目录结构和权限一致。
 		data, err := os.ReadFile(filepath.Join(srcDir, fileName))
 		if err != nil {
 			return err

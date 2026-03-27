@@ -24,6 +24,10 @@ type Indexer interface {
 	Close() error
 }
 
+// NewIndexer 根据配置创建索引实现。
+// 1. BTree 和 ART 使用纯内存索引，适合常规读写路径。
+// 2. B+Tree 依赖独立文件存储索引，适合需要索引持久化的场景。
+// 3. 未知类型直接 panic，确保错误配置在启动阶段暴露。
 func NewIndexer(idextype IndexerType, dirPath string, sync bool) Indexer {
 	switch idextype {
 	case BTreeIndex:

@@ -5,7 +5,8 @@ import (
 	"kvix/common"
 )
 
-// RedisDataStore 封装底层 kvix 实例。
+// RedisDataStore 封装底层 kvix 实例，并在其上提供 Redis 风格数据结构语义。
+// 模块本身不实现 Redis 网络协议，而是把字符串、集合等结构映射到底层 KV 引擎。
 type RedisDataStore struct {
 	db *kvix.DB
 }
