@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"bitcask-my/common"
+	"kvix/common"
 )
 
 func TestRedisStoreReopenPersistsData(t *testing.T) {

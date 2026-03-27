@@ -1,8 +1,8 @@
 package index
 
 import (
-	"bitcask-my/data"
 	"bytes"
+	"kvix/data"
 	"sort"
 	"sync"
 

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"bitcask-my/common"
+	"kvix/common"
 )
 
 func TestLPushRPushAndRange(t *testing.T) {

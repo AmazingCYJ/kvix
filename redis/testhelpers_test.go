@@ -3,7 +3,7 @@ package redis
 import (
 	"testing"
 
-	"bitcask-my/common"
+	"kvix/common"
 )
 
 func testRedisOptions(dir string) common.Options {

@@ -1,9 +1,9 @@
-package bitcaskmy
+package kvix
 
 import (
-	"bitcask-my/common"
-	"bitcask-my/data"
 	"encoding/binary"
+	"kvix/common"
+	"kvix/data"
 	"sync"
 	"sync/atomic"
 )

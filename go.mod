@@ -1,4 +1,4 @@
-module bitcask-my
+module kvix
 
 go 1.25.0
 

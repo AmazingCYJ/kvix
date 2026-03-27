@@ -1,18 +1,18 @@
 package main
 
 import (
-	bitcaskmy "bitcask-my"
-	common "bitcask-my/common"
 	"errors"
+	kvix "kvix"
+	common "kvix/common"
 
 	"github.com/gofiber/fiber/v2"
 )
 
 type server struct {
-	db *bitcaskmy.DB
+	db *kvix.DB
 }
 
-func newServer(db *bitcaskmy.DB) *server {
+func newServer(db *kvix.DB) *server {
 	return &server{db: db}
 }
 

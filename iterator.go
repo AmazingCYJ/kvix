@@ -1,9 +1,9 @@
-package bitcaskmy
+package kvix
 
 import (
-	"bitcask-my/common"
-	"bitcask-my/index"
 	"bytes"
+	"kvix/common"
+	"kvix/index"
 )
 
 // Iterator 迭代器 面向用户

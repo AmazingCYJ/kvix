@@ -1,7 +1,7 @@
 package index
 
 import (
-	"bitcask-my/data"
+	"kvix/data"
 	"testing"
 )
 

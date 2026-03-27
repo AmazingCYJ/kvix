@@ -1,16 +1,16 @@
-package bitcaskmy
+package kvix
 
 import (
-	"bitcask-my/common"
-	. "bitcask-my/common"
-	"bitcask-my/data"
-	"bitcask-my/fio"
-	"bitcask-my/index"
-	"bitcask-my/utils"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
+	"kvix/common"
+	. "kvix/common"
+	"kvix/data"
+	"kvix/fio"
+	"kvix/index"
+	"kvix/utils"
 	"os"
 	"path/filepath"
 	"sort"
@@ -48,7 +48,7 @@ type Stat struct {
 	DiskSize       int64 //磁盘占用大小
 }
 
-// Open 打开或创建一个 Bitcask 数据库实例，加载数据文件并构建内存索引。
+// Open 打开或创建一个 kvix 数据库实例，加载数据文件并构建内存索引。
 func Open(options Options) (*DB, error) {
 	//1.配置校验
 	if err := checkOptions(options); err != nil {

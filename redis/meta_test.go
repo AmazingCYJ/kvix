@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"bitcask-my/common"
+	"kvix/common"
 )
 
 func TestMetaEncodeDecode(t *testing.T) {

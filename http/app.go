@@ -1,16 +1,16 @@
 package main
 
 import (
-	bitcaskmy "bitcask-my"
+	kvix "kvix"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 )
 
-func newApp(db *bitcaskmy.DB) *fiber.App {
+func newApp(db *kvix.DB) *fiber.App {
 	app := fiber.New(fiber.Config{
-		AppName:      "bitcask-my-http",
+		AppName:      "kvix-http",
 		ErrorHandler: errorHandler,
 	})
 

@@ -1,9 +1,9 @@
 package benchmark
 
 import (
-	bitcaskmy "bitcask-my"
-	"bitcask-my/common"
 	"encoding/binary"
+	kvix "kvix"
+	"kvix/common"
 	"testing"
 )
 
@@ -37,29 +37,29 @@ func benchmarkOptions(dir string) common.Options {
 	}
 }
 
-func openBenchmarkDB(b *testing.B) (*bitcaskmy.DB, string) {
+func openBenchmarkDB(b *testing.B) (*kvix.DB, string) {
 	b.Helper()
 	// 使用 b.TempDir 为每个子基准隔离目录，避免文件锁和目录状态互相污染。
 	dir := b.TempDir()
 
-	db, err := bitcaskmy.Open(benchmarkOptions(dir))
+	db, err := kvix.Open(benchmarkOptions(dir))
 	if err != nil {
 		b.Fatalf("打开 benchmark db 失败: %v", err)
 	}
 	return db, dir
 }
 
-func reopenBenchmarkDB(b *testing.B, dir string) *bitcaskmy.DB {
+func reopenBenchmarkDB(b *testing.B, dir string) *kvix.DB {
 	b.Helper()
 
-	db, err := bitcaskmy.Open(benchmarkOptions(dir))
+	db, err := kvix.Open(benchmarkOptions(dir))
 	if err != nil {
 		b.Fatalf("重新打开 benchmark db 失败: %v", err)
 	}
 	return db
 }
 
-func mustCloseBenchmarkDB(b *testing.B, db *bitcaskmy.DB) {
+func mustCloseBenchmarkDB(b *testing.B, db *kvix.DB) {
 	b.Helper()
 	if err := db.Close(); err != nil {
 		b.Fatalf("关闭 benchmark db 失败: %v", err)
@@ -94,7 +94,7 @@ func makeBenchmarkKeys(n int) [][]byte {
 	return keys
 }
 
-func seedBenchmarkData(b *testing.B, db *bitcaskmy.DB, keys [][]byte, value []byte) {
+func seedBenchmarkData(b *testing.B, db *kvix.DB, keys [][]byte, value []byte) {
 	b.Helper()
 	for i := range keys {
 		if err := db.Put(keys[i], value); err != nil {
@@ -103,7 +103,7 @@ func seedBenchmarkData(b *testing.B, db *bitcaskmy.DB, keys [][]byte, value []by
 	}
 }
 
-func BenchmarkBitcaskPut(b *testing.B) {
+func BenchmarkKvixPut(b *testing.B) {
 	for _, tc := range benchmarkCases {
 		tc := tc
 		b.Run(tc.name, func(b *testing.B) {
@@ -127,7 +127,7 @@ func BenchmarkBitcaskPut(b *testing.B) {
 	}
 }
 
-func BenchmarkBitcaskGet(b *testing.B) {
+func BenchmarkKvixGet(b *testing.B) {
 	for _, tc := range benchmarkCases {
 		tc := tc
 		b.Run(tc.name, func(b *testing.B) {
@@ -159,7 +159,7 @@ func BenchmarkBitcaskGet(b *testing.B) {
 	}
 }
 
-func BenchmarkBitcaskReadAfterLoad(b *testing.B) {
+func BenchmarkKvixReadAfterLoad(b *testing.B) {
 	for _, tc := range benchmarkCases {
 		tc := tc
 		b.Run(tc.name, func(b *testing.B) {

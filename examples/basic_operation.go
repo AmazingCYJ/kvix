@@ -1,15 +1,15 @@
 package main
 
 import (
-	bitcask "bitcask-my"
-	"bitcask-my/common"
 	"fmt"
+	"kvix"
+	"kvix/common"
 )
 
 func main() {
 	opts := common.DefaultOptions
-	opts.DirPath = "/tmp/bitcask-data"
-	db, err := bitcask.Open(
+	opts.DirPath = "/tmp/kvix-data"
+	db, err := kvix.Open(
 		opts,
 	)
 	if err != nil {

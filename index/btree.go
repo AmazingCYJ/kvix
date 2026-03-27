@@ -1,9 +1,9 @@
 package index
 
 import (
-	// . "bitcask-my/common"
-	"bitcask-my/data"
+	// . "kvix/common"
 	"bytes"
+	"kvix/data"
 	"sort"
 
 	"sync"

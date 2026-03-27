@@ -1,8 +1,8 @@
-package bitcaskmy
+package kvix
 
 import (
-	"bitcask-my/common"
 	"errors"
+	"kvix/common"
 	"testing"
 )
 

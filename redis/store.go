@@ -1,18 +1,18 @@
 package redis
 
 import (
-	bitcaskmy "bitcask-my"
-	"bitcask-my/common"
+	kvix "kvix"
+	"kvix/common"
 )
 
-// RedisDataStore 封装底层 bitcask 实例。
+// RedisDataStore 封装底层 kvix 实例。
 type RedisDataStore struct {
-	db *bitcaskmy.DB
+	db *kvix.DB
 }
 
 // NewRedisDataStore 构造 RedisDataStore。
 func NewRedisDataStore(options common.Options) (*RedisDataStore, error) {
-	db, err := bitcaskmy.Open(options)
+	db, err := kvix.Open(options)
 	if err != nil {
 		return nil, err
 	}

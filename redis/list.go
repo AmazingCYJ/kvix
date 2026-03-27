@@ -3,7 +3,7 @@ package redis
 import (
 	"errors"
 
-	"bitcask-my/common"
+	"kvix/common"
 )
 
 // 列表元数据通过 head/tail 维护逻辑索引边界：head 指向最左元素，tail 指向最右元素，

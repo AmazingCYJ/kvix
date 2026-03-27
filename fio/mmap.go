@@ -1,7 +1,7 @@
 package fio
 
 import (
-	"bitcask-my/common"
+	"kvix/common"
 	"os"
 
 	"golang.org/x/exp/mmap"

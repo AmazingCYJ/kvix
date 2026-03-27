@@ -1,10 +1,10 @@
 package main
 
 import (
-	bitcaskmy "bitcask-my"
-	common "bitcask-my/common"
 	"encoding/json"
 	"io"
+	kvix "kvix"
+	common "kvix/common"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -330,12 +330,12 @@ func TestBatchWriteRejectsWrongFieldTypes(t *testing.T) {
 	_ = assertJSONMessage(t, resp, http.StatusBadRequest, "failed to decode json")
 }
 
-func setupTestApp(t *testing.T) (*fiber.App, *bitcaskmy.DB) {
+func setupTestApp(t *testing.T) (*fiber.App, *kvix.DB) {
 	t.Helper()
 	option := common.DefaultOptions
 	option.DirPath = t.TempDir()
 
-	db, err := bitcaskmy.Open(option)
+	db, err := kvix.Open(option)
 	if err != nil {
 		t.Fatalf("failed to open db: %v", err)
 	}

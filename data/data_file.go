@@ -1,12 +1,12 @@
 package data
 
 import (
-	. "bitcask-my/common"
-	"bitcask-my/fio"
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
 	"io"
+	. "kvix/common"
+	"kvix/fio"
 	"path/filepath"
 )
 

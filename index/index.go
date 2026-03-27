@@ -1,9 +1,9 @@
 package index
 
 import (
-	"bitcask-my/data"
+	"kvix/data"
 
-	. "bitcask-my/common"
+	. "kvix/common"
 
 	"github.com/google/btree"
 )

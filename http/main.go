@@ -1,11 +1,11 @@
 package main
 
 import (
-	bitcaskmy "bitcask-my"
-	common "bitcask-my/common"
 	"context"
 	"errors"
 	"fmt"
+	kvix "kvix"
+	common "kvix/common"
 	"log"
 	"os"
 	"os/signal"
@@ -40,7 +40,7 @@ func main() {
 		}
 	}()
 
-	addr := os.Getenv("BITCASK_HTTP_ADDR")
+	addr := os.Getenv("KVIX_HTTP_ADDR")
 	if addr == "" {
 		addr = defaultListenAddr
 	}
@@ -50,15 +50,15 @@ func main() {
 	}
 }
 
-func openTempDB() (*bitcaskmy.DB, func(), error) {
+func openTempDB() (*kvix.DB, func(), error) {
 	option := common.DefaultOptions
-	dir, err := os.MkdirTemp("", "bitcask-http")
+	dir, err := os.MkdirTemp("", "kvix-http")
 	if err != nil {
 		return nil, nil, err
 	}
 	option.DirPath = dir
 
-	db, err := bitcaskmy.Open(option)
+	db, err := kvix.Open(option)
 	if err != nil {
 		_ = os.RemoveAll(dir)
 		return nil, nil, err
@@ -70,7 +70,7 @@ func openTempDB() (*bitcaskmy.DB, func(), error) {
 		}
 	}
 
-	log.Printf("bitcask http db initialized at %s", dir)
+	log.Printf("kvix http db initialized at %s", dir)
 	return db, cleanup, nil
 }
 

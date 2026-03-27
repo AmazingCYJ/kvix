@@ -1,9 +1,9 @@
 package index
 
 import (
-	. "bitcask-my/common"
-	"bitcask-my/data"
 	"errors"
+	. "kvix/common"
+	"kvix/data"
 	"testing"
 
 	bolt "go.etcd.io/bbolt"

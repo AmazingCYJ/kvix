@@ -1,10 +1,10 @@
-package bitcaskmy
+package kvix
 
 import (
-	"bitcask-my/common"
-	"bitcask-my/data"
-	"bitcask-my/utils"
 	"io"
+	"kvix/common"
+	"kvix/data"
+	"kvix/utils"
 	"os"
 	"path"
 	"path/filepath"
@@ -95,7 +95,7 @@ func (db *DB) merge() error {
 	mergeOptions.DirPath = mergePath
 	mergeOptions.SyncWrites = false //合并过程中不需要每次写入都同步磁盘，等合并完成后再统一同步一次
 
-	//打开一个新的临时 bitcask 数据库实例，使用 merge 目录作为数据目录
+	//打开一个新的临时 kvix 数据库实例，使用 merge 目录作为数据目录
 	mergeDB, err := Open(mergeOptions)
 	if err != nil {
 		return err
@@ -169,12 +169,12 @@ func (db *DB) merge() error {
 	return nil
 }
 
-// tmp/bitcask
-// tmp/bitcask-merge
+// tmp/kvix
+// tmp/kvix-merge
 func (db *DB) getMergePath() string {
 	//1.返回tmp/
 	dir := path.Dir(path.Clean(db.options.DirPath))
-	///2.返回bitcask
+	///2.返回kvix目录名
 	base := path.Base(db.options.DirPath)
 	return filepath.Join(dir, base+mergeFileSuffix)
 }

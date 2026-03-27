@@ -1,8 +1,8 @@
 package index
 
 import (
-	"bitcask-my/data"
 	"bytes"
+	"kvix/data"
 	"os"
 	"path/filepath"
 	"sort"
@@ -13,7 +13,7 @@ import (
 
 const bptreeIndexFiuleName = "bptree-index"
 
-var indexBucketName = []byte("bitcask-index")
+var indexBucketName = []byte("kvix-index")
 
 // B+树索引实现
 // 主要封装了 bbolt 库，提供了 Indexer 接口的实现。

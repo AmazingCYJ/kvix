@@ -1,8 +1,8 @@
 package main
 
 import (
-	common "bitcask-my/common"
 	"errors"
+	common "kvix/common"
 
 	"github.com/gofiber/fiber/v2"
 )
