@@ -16,9 +16,11 @@ import (
 )
 
 // setActiveDataFile 打开下一个可写数据文件，并把它设置为当前活跃文件。
+// 对初学者来说，可以把“活跃文件”理解成当前仍在持续追加写入的新日志文件。
 func (db *DB) setActiveDataFile() error {
 	var initialFileId uint32 = 0
 	if db.activeFile != nil {
+		// 当前已经有活跃文件时，新文件 ID 直接在原基础上加 1。
 		initialFileId = db.activeFile.FileID + 1
 	}
 	datafile, err := data.OpenDataFile(db.options.DirPath, initialFileId, fio.StandardFIO)
@@ -30,6 +32,7 @@ func (db *DB) setActiveDataFile() error {
 }
 
 // loadDataFiles 扫描数据目录、按文件 ID 顺序打开所有数据文件，并区分活跃文件和旧文件。
+// 这个过程本身不重建索引，它只负责“把磁盘上的文件集合恢复成内存里的文件对象集合”。
 func (db *DB) loadDataFiles() error {
 	files, err := os.ReadDir(db.options.DirPath)
 	if err != nil {
@@ -38,6 +41,7 @@ func (db *DB) loadDataFiles() error {
 
 	var fileIds []int
 	for _, file := range files {
+		// 只关心真正的数据文件，其他文件例如 Hint、merge 标记或索引文件都忽略。
 		if strings.HasSuffix(file.Name(), DataFileSuffix) {
 			splitNames := strings.Split(file.Name(), ".")
 			fileId, err := strconv.Atoi(splitNames[0])
@@ -52,6 +56,7 @@ func (db *DB) loadDataFiles() error {
 	db.fileIds = fileIds
 
 	for i, fileId := range fileIds {
+		// 启动恢复阶段可选择 mmap，提高大量顺序读取时的读取效率。
 		ioType := fio.StandardFIO
 		if db.options.MMapAtStartup {
 			ioType = fio.MemoryMap
@@ -60,6 +65,7 @@ func (db *DB) loadDataFiles() error {
 		if err != nil {
 			return err
 		}
+		// 排序后的最后一个文件默认视为活跃文件，其余都是旧文件。
 		if i == len(fileIds)-1 {
 			db.activeFile = dataFile
 		} else {
@@ -105,6 +111,8 @@ func (db *DB) loadIndexFromDataFiles() error {
 	}
 
 	// 4. 事务中的数据只有在读到 TxnFinished 记录后才能整体生效，因此先按序列号暂存。
+	// TransactionRecords 用于暂存“已经读到但尚未确认提交”的事务记录。
+	// 只有看到对应 TxnFinished 标记后，这些记录才真正写入索引。
 	TransactionRecords := make(map[uint64][]*data.TransactionRecord)
 	var currentSeqNo uint64 = nonTransactionSeqNo
 
@@ -148,6 +156,7 @@ func (db *DB) loadIndexFromDataFiles() error {
 			if seqNo == nonTransactionSeqNo {
 				updateIndex(realKey, logRecord.Type, pos)
 			} else {
+				// 带事务序列号的记录需要先看它是不是“事务完成标记”。
 				if logRecord.Type == data.LogRecordTxnFinished {
 					for _, record := range TransactionRecords[seqNo] {
 						realKey, _ := parseLogRecordKey(record.Record.Key)
@@ -181,6 +190,7 @@ func (db *DB) loadIndexFromDataFiles() error {
 }
 
 // logSeqNo 从事务序列号文件中恢复最近一次持久化的事务序号。
+// B+Tree 索引模式下，批量写事务恢复更依赖这个编号，因为索引自身已经持久化。
 func (db *DB) logSeqNo() error {
 	fileName := filepath.Join(db.options.DirPath, SeqNoFileName)
 	if _, err := os.Stat(fileName); os.IsNotExist(err) {
@@ -201,6 +211,7 @@ func (db *DB) logSeqNo() error {
 }
 
 // parseLogRecordKey 解析日志记录中的编码 key，分离出真实 key 和事务序列号。
+// 批量事务会把 seqNo 编到 key 前缀里，普通 Put/Delete 则使用固定的非事务序号。
 func parseLogRecordKey(key []byte) ([]byte, uint64) {
 	seqNo, n := binary.Uvarint(key)
 	realKey := key[n:]

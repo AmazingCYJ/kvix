@@ -3,9 +3,11 @@ package fio
 import "fmt"
 
 const (
+	// DataFilePerm 是 kvix 创建数据文件时使用的默认权限位。
 	DataFilePerm = 0644
 )
 
+// FileIOType 用来标识底层采用哪一种 IO 实现。
 type FileIOType = byte
 
 const (
@@ -15,17 +17,18 @@ const (
 	MemoryMap
 )
 
-// IOManager 定义了文件读写操作的接口，提供了基本的读写、同步和关闭功能。
+// IOManager 抽象了数据文件访问所需的最小能力集合。
+// 上层只依赖这个接口，因此不需要关心当前底层究竟是 os.File 还是 mmap。
 type IOManager interface {
-	//从文件指定位置读,返回读取的字节数和错误信息
+	// ReadAt 从指定偏移读取数据，不改变当前文件读写位置。
 	ReadAt(p []byte, off int64) (n int, err error)
-	//向文件指定位置写,返回写入的字节数和错误信息
+	// Write 从当前写入位置写入数据，通常用于顺序追加写。
 	Write(p []byte) (n int, err error)
-	//将内存中的数据刷新到磁盘,确保数据持久化
+	// Sync 强制把缓冲区数据刷新到磁盘，确保持久化。
 	Sync() error
-	//关闭文件,释放资源
+	// Close 关闭底层资源。
 	Close() error
-	// Size 返回文件的当前大小
+	// Size 返回文件当前大小，供恢复和边界判断使用。
 	Size() (int64, error)
 }
 

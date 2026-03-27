@@ -18,6 +18,7 @@ const (
 )
 
 // merge 将仍然有效的历史数据重写到临时目录，并生成 Hint 文件加速后续启动。
+// 可以把它理解成一次“只保留最新有效记录的整理与压缩”过程。
 func (db *DB) merge() error {
 	// 1. 先做合并前置检查，确认当前状态值得执行 merge。
 	if db.activeFile == nil {
@@ -85,6 +86,7 @@ func (db *DB) merge() error {
 	db.mu.Unlock()
 
 	// 3. 准备临时 merge 目录和目标数据库实例。
+	// 注意这里不是在原目录里直接改写旧文件，而是先在旁路目录构建一套全新结果。
 	// 3.1 按文件 ID 从小到大处理，保持重写顺序稳定。
 	sort.Slice(mergeFiles, func(i, j int) bool {
 		return mergeFiles[i].FileID < mergeFiles[j].FileID
@@ -181,9 +183,8 @@ func (db *DB) merge() error {
 	return nil
 }
 
-// tmp/kvix
-// tmp/kvix-merge
 // getMergePath 返回当前数据库对应的临时 merge 目录路径。
+// 例如正式目录是 /tmp/kvix，那么 merge 临时目录就是 /tmp/kvix-merge。
 func (db *DB) getMergePath() string {
 	// 1. 取数据目录的父目录作为 merge 临时目录的根。
 	dir := path.Dir(path.Clean(db.options.DirPath))
@@ -194,6 +195,7 @@ func (db *DB) getMergePath() string {
 }
 
 // loadMegreFiles 在数据库启动阶段接管上次 merge 产生的临时结果。
+// 如果上次 merge 已经完整完成，但结果还没搬回正式目录，就在这里做最后的“接管收尾”。
 func (db *DB) loadMegreFiles() error {
 	mergePath := db.getMergePath()
 
@@ -210,6 +212,7 @@ func (db *DB) loadMegreFiles() error {
 	}
 
 	// 2. 只有在完成标记存在时才接管目录内容，否则视为未完成 merge。
+	// 这样可以避免把一半写完的 merge 结果误当成可用数据集。
 	var mergeFinished bool
 	var mergeFinFileNames []string
 	for _, entry := range dirEntries {
@@ -253,6 +256,7 @@ func (db *DB) loadMegreFiles() error {
 }
 
 // getNonMergeFileId 从 merge 完成标识中解析本次 merge 边界处第一个未参与 merge 的活跃文件 ID。
+// 启动接管时需要它来判断：哪些旧文件已经被 merge 结果覆盖，哪些还应该保留。
 func (db *DB) getNonMergeFileId(dirPath string) (uint32, error) {
 	mergeFinishedFile, err := data.OpenMergeDataFile(dirPath)
 	if err != nil {
@@ -270,6 +274,7 @@ func (db *DB) getNonMergeFileId(dirPath string) (uint32, error) {
 }
 
 // loadIndexFromHintFile 从 Hint 文件恢复索引，减少启动时的数据扫描成本。
+// 对初学者来说，可以把 Hint 文件理解成“key -> 最新位置”的一份简化快照。
 func (db *DB) loadIndexFromHintFile() error {
 	// 查看 hint 文件是否存在，如果不存在，说明没有可复用的索引快照。
 	hintFileName := filepath.Join(db.options.DirPath, common.HintFileName)

@@ -10,10 +10,12 @@ import (
 )
 
 const (
+	// zsetScoreEncodedSize 是 score 排序编码后的固定字节长度。
 	zsetScoreEncodedSize = 8
 )
 
 var (
+	// zsetScorePlaceholder 是 score 索引子键的占位值；真正重要的信息在键本身的排序顺序里。
 	zsetScorePlaceholder        = []byte{1}
 	errInvalidZSetScoreEncoding = errors.New("redis: invalid zset score encoding")
 )
@@ -97,6 +99,7 @@ func (rds *RedisDataStore) ZAdd(key []byte, score float64, member []byte) (bool,
 	return true, nil
 }
 
+// ZRem 删除一个 member，同时清理 dict 索引和 score 排序索引。
 func (rds *RedisDataStore) ZRem(key, member []byte) (bool, error) {
 	meta, err := rds.loadZSetMetadata(key)
 	if err != nil {
@@ -144,6 +147,7 @@ func (rds *RedisDataStore) ZRem(key, member []byte) (bool, error) {
 	return true, nil
 }
 
+// ZScore 查询 member 对应的 score。
 func (rds *RedisDataStore) ZScore(key, member []byte) (float64, error) {
 	meta, err := rds.loadZSetMetadata(key)
 	if err != nil {
@@ -166,6 +170,7 @@ func (rds *RedisDataStore) ZScore(key, member []byte) (float64, error) {
 	return score, nil
 }
 
+// ZCard 返回有序集合大小。
 func (rds *RedisDataStore) ZCard(key []byte) (uint32, error) {
 	meta, err := rds.loadZSetMetadata(key)
 	if err != nil {
@@ -231,6 +236,7 @@ func (rds *RedisDataStore) ZRange(key []byte, start, stop int64) ([][]byte, erro
 	return result, nil
 }
 
+// loadZSetMetadata 加载并校验 zset 类型 metadata。
 func (rds *RedisDataStore) loadZSetMetadata(key []byte) (*metadata, error) {
 	meta, err := rds.findMetadata(key)
 	if err != nil {
@@ -245,6 +251,7 @@ func (rds *RedisDataStore) loadZSetMetadata(key []byte) (*metadata, error) {
 	return meta, nil
 }
 
+// buildZSetScorePrefix 构造 score 索引前缀，便于按 score 顺序扫描当前版本全部成员。
 func buildZSetScorePrefix(key []byte, version uint64) []byte {
 	dst := make([]byte, 0, len(prefixZSetScore)+1+lenMarkerSize+len(key)+8)
 	dst = appendPrefix(dst, prefixZSetScore)
@@ -253,6 +260,7 @@ func buildZSetScorePrefix(key []byte, version uint64) []byte {
 	return dst
 }
 
+// normalizeZRange 把 start/stop 规范化为合法闭区间，并兼容负数下标。
 func normalizeZRange(start, stop, length int64) (int64, int64, bool) {
 	if length == 0 {
 		return 0, -1, false
@@ -281,6 +289,8 @@ func normalizeZRange(start, stop, length int64) (int64, int64, bool) {
 	return start, stop, true
 }
 
+// decodeZSetScore 把可排序的 8 字节编码还原成 float64。
+// 这个编码方案的目标不是最省空间，而是让字节序遍历顺序与 score 数值顺序一致。
 func decodeZSetScore(encoded []byte) (float64, error) {
 	if len(encoded) != zsetScoreEncodedSize {
 		return 0, errInvalidZSetScoreEncoding

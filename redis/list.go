@@ -71,7 +71,10 @@ func (rds *RedisDataStore) LPush(key []byte, values ...[]byte) (uint32, error) {
 	return next.size, nil
 }
 
+// RPush 把元素依次追加到列表右侧，并返回追加后的逻辑长度。
+// 与 LPush 对称，它主要修改的是 tail 边界。
 func (rds *RedisDataStore) RPush(key []byte, values ...[]byte) (uint32, error) {
+	// 1. 空参数时只返回当前长度，不创建新 key。
 	if len(values) == 0 {
 		meta, err := rds.loadListMetadata(key)
 		if err != nil {
@@ -83,6 +86,7 @@ func (rds *RedisDataStore) RPush(key []byte, values ...[]byte) (uint32, error) {
 		return meta.size, nil
 	}
 
+	// 2. 读取或创建 metadata，确保后续 tail 扩展建立在最新版本上。
 	meta, err := rds.findMetadata(key)
 	if err != nil {
 		return 0, err
@@ -108,6 +112,7 @@ func (rds *RedisDataStore) RPush(key []byte, values ...[]byte) (uint32, error) {
 		}
 	}
 
+	// 3. 每写入一个元素就向右扩展 tail，并把元素落到对应索引子键。
 	wb := rds.db.NewWriteBatch(common.DefaultWriteBatchOptions)
 	for _, value := range values {
 		if next.size == 0 {
@@ -121,6 +126,7 @@ func (rds *RedisDataStore) RPush(key []byte, values ...[]byte) (uint32, error) {
 		}
 		next.size++
 	}
+	// 4. 最后统一回写 metadata，让边界和元素个数与本次写入保持一致。
 	if err := wb.Put(metaKey(key), encodeMetadata(next)); err != nil {
 		return 0, err
 	}
@@ -130,6 +136,8 @@ func (rds *RedisDataStore) RPush(key []byte, values ...[]byte) (uint32, error) {
 	return next.size, nil
 }
 
+// LPop 弹出并返回列表最左侧元素。
+// 当最后一个元素被弹出时，会顺带删除 metadata，让整个 key 逻辑上消失。
 func (rds *RedisDataStore) LPop(key []byte) ([]byte, error) {
 	meta, err := rds.loadListMetadata(key)
 	if err != nil {
@@ -171,6 +179,7 @@ func (rds *RedisDataStore) LPop(key []byte) ([]byte, error) {
 	return value, nil
 }
 
+// RPop 弹出并返回列表最右侧元素。
 func (rds *RedisDataStore) RPop(key []byte) ([]byte, error) {
 	meta, err := rds.loadListMetadata(key)
 	if err != nil {
@@ -212,6 +221,8 @@ func (rds *RedisDataStore) RPop(key []byte) ([]byte, error) {
 	return value, nil
 }
 
+// LLen 返回列表当前元素个数。
+// 不存在的 key 视为长度 0，这与 Redis 的习惯保持一致。
 func (rds *RedisDataStore) LLen(key []byte) (uint32, error) {
 	meta, err := rds.loadListMetadata(key)
 	if err != nil {
@@ -254,6 +265,7 @@ func (rds *RedisDataStore) LRange(key []byte, start, stop int64) ([][]byte, erro
 	return results, nil
 }
 
+// loadListMetadata 加载并校验列表类型的 metadata。
 func (rds *RedisDataStore) loadListMetadata(key []byte) (*metadata, error) {
 	meta, err := rds.findMetadata(key)
 	if err != nil {
@@ -268,6 +280,8 @@ func (rds *RedisDataStore) loadListMetadata(key []byte) (*metadata, error) {
 	return meta, nil
 }
 
+// normalizeListRange 把可能包含负数的范围转换成 [0, size) 内的合法闭区间。
+// 返回 ok=false 代表范围裁剪后为空。
 func normalizeListRange(size, start, stop int64) (int64, int64, bool) {
 	if size <= 0 {
 		return 0, -1, false

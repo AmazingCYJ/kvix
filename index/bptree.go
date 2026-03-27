@@ -15,15 +15,15 @@ const bptreeIndexFiuleName = "bptree-index"
 
 var indexBucketName = []byte("kvix-index")
 
-// B+树索引实现
-// 主要封装了 bbolt 库，提供了 Indexer 接口的实现。
+// BPlusTree 是基于 bbolt 的持久化 B+Tree 索引实现。
+// 相比纯内存索引，它把 key -> pos 映射单独落盘，因此数据库重启后恢复更快。
 type BPlusTree struct {
 	tree *bbolt.DB
 	bkt  []byte
 }
 
 // NewBPlusTree 创建一个基于 bbolt 的 B+ 树索引。
-// dirPath 为 bbolt 数据文件路径；若文件不存在会自动创建。
+// dirPath 为索引文件所在目录；若索引文件不存在会自动创建。
 func NewBPlusTree(dirPath string, syncWrites bool) *BPlusTree {
 	opts := bbolt.DefaultOptions
 	opts.NoSync = !syncWrites
@@ -46,6 +46,7 @@ func NewBPlusTree(dirPath string, syncWrites bool) *BPlusTree {
 }
 
 // Put 写入或更新 key 对应的位置索引，返回旧值（若不存在则为 nil）。
+// 这里会开启一次 bbolt 写事务，把新的位置覆盖到 bucket 中。
 func (bpt *BPlusTree) Put(key []byte, pos *data.LogRecordPos) *data.LogRecordPos {
 	var oldPos *data.LogRecordPos
 	err := bpt.tree.Update(func(tx *bbolt.Tx) error {
@@ -135,6 +136,7 @@ func (bpt *BPlusTree) Size() int {
 }
 
 // Iterator 获取索引迭代器。
+// 当前实现会先把 bucket 内容复制成切片快照，再在切片上完成后续遍历。
 func (bpt *BPlusTree) Iterator(reverse bool) IndexIterator {
 	items := make([]*Item, 0)
 	_ = bpt.tree.View(func(tx *bbolt.Tx) error {
