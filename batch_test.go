@@ -213,3 +213,31 @@ func TestWriteBatchReopenLoadsCommittedKeys(t *testing.T) {
 		t.Fatalf("db2.Get(txn:k2) = %q, want %q", v2, "v2")
 	}
 }
+
+func TestWriteBatchOnFreshBPlusTreeDir(t *testing.T) {
+	opts := common.DefaultOptions
+	opts.DirPath = t.TempDir()
+	opts.SyncWrites = true
+
+	db, err := Open(opts)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	wb := db.NewWriteBatch(common.DefaultWriteBatchOptions)
+	if err := wb.Put([]byte("fresh"), []byte("value")); err != nil {
+		t.Fatalf("wb.Put(fresh) error = %v", err)
+	}
+	if err := wb.Commit(); err != nil {
+		t.Fatalf("wb.Commit() error = %v", err)
+	}
+
+	value, err := db.Get([]byte("fresh"))
+	if err != nil {
+		t.Fatalf("db.Get(fresh) error = %v", err)
+	}
+	if string(value) != "value" {
+		t.Fatalf("db.Get(fresh) = %q, want %q", value, "value")
+	}
+}

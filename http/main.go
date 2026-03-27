@@ -6,6 +6,7 @@ import (
 	"fmt"
 	kvix "kvix"
 	common "kvix/common"
+	redisstore "kvix/redis"
 	"log"
 	"os"
 	"os/signal"
@@ -34,7 +35,8 @@ func main() {
 		}
 	}()
 
-	app := newApp(db)
+	redisStore := redisstore.NewRedisDataStoreFromDB(db)
+	app := newApp(db, redisStore)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 

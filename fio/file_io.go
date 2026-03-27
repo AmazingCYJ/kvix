@@ -12,7 +12,9 @@ type FileIO struct {
 func NewFileIO(filePath string) (*FileIO, error) {
 	fd, err := os.OpenFile(
 		filePath,
-		os.O_RDWR|os.O_CREATE,
+		// kvix 的数据文件始终采用“顺序追加写”模型，因此这里显式开启 O_APPEND，
+		// 保证重启后重新打开已有文件时，新的写入仍然落在文件末尾，而不会从偏移 0 覆盖旧内容。
+		os.O_RDWR|os.O_CREATE|os.O_APPEND,
 		DataFilePerm,
 	)
 	if err != nil {

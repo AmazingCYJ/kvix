@@ -48,7 +48,7 @@ func Open(options Options) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(entries) == 0 {
+	if isInitialDataDir(entries) {
 		isInitial = true
 	}
 
@@ -92,6 +92,13 @@ func Open(options Options) (*DB, error) {
 		if err := db.logSeqNo(); err != nil {
 			return nil, err
 		}
+		if db.options.MMapAtStartup {
+			// B+Tree 虽然不需要重放内存索引，但如果启动时用 mmap 打开了数据文件，
+			// 恢复结束后仍然必须切回标准文件 IO，否则后续写入会直接失败。
+			if err := db.resetIoType(); err != nil {
+				return nil, err
+			}
+		}
 		if db.activeFile != nil {
 			// B+Tree 模式下索引不需要重放日志来恢复，但活跃文件下一次写入位置仍然要校正到文件末尾。
 			size, err := db.activeFile.IoManager.Size()
@@ -116,4 +123,19 @@ func checkOptions(options Options) error {
 		return errors.New("data file size must be greater than zero")
 	}
 	return nil
+}
+
+// isInitialDataDir 判断当前目录是否仍然可以视为“空库首次初始化”。
+// 这里要忽略运行时自动创建的 flock 锁文件，否则一个刚创建的空目录也会被误判成“已有历史状态”。
+func isInitialDataDir(entries []os.DirEntry) bool {
+	if len(entries) == 0 {
+		return true
+	}
+	for _, entry := range entries {
+		if entry.Name() == fileLockName {
+			continue
+		}
+		return false
+	}
+	return true
 }

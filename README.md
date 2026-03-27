@@ -727,6 +727,17 @@ func main() {
 
 项目包含一个基于 Fiber 的 HTTP 示例服务，用于演示如何把 `kvix.DB` 暴露为接口。
 
+当前这层 HTTP 不仅提供基础 KV 路由，也提供了 Redis 命令风格路由：
+
+- 基础 KV：`entries` / `entries/batch` / `keys` / `stats`
+- Redis string：`set` / `get` / `del` / `expire` / `ttl`
+- Redis hash：`hset` / `hget` / `hdel` / `hexists` / `hlen`
+- Redis list：`lpush` / `rpush` / `lpop` / `rpop` / `llen` / `lrange`
+- Redis set：`sadd` / `srem` / `sismember` / `scard` / `smembers`
+- Redis zset：`zadd` / `zrem` / `zscore` / `zcard` / `zrange`
+
+这些 Redis HTTP 命令和基础 KV 接口共享同一个底层 `kvix.DB`，不会重复打开第二个数据库实例。
+
 ### 10.1 启动
 
 ```bash
@@ -767,7 +778,35 @@ curl http://127.0.0.1:8080/api/v1/entries/name
 curl -X DELETE http://127.0.0.1:8080/api/v1/entries/name
 ```
 
-更多说明见 [http/README.md](./http/README.md)。
+Redis string 示例：
+
+```bash
+curl -X POST http://127.0.0.1:8080/api/v1/redis/string/set \
+  -H 'Content-Type: application/json' \
+  -d '{"key":"name","value":"alice","ttl_seconds":60}'
+
+curl -X POST http://127.0.0.1:8080/api/v1/redis/string/get \
+  -H 'Content-Type: application/json' \
+  -d '{"key":"name"}'
+```
+
+Redis hash 示例：
+
+```bash
+curl -X POST http://127.0.0.1:8080/api/v1/redis/hash/hset \
+  -H 'Content-Type: application/json' \
+  -d '{"key":"profile","field":"name","value":"alice"}'
+```
+
+Redis list 示例：
+
+```bash
+curl -X POST http://127.0.0.1:8080/api/v1/redis/list/lpush \
+  -H 'Content-Type: application/json' \
+  -d '{"key":"numbers","values":["a","b"]}'
+```
+
+更完整的路由列表、错误语义和五种 Redis 结构调用示例，见 [http/README.md](./http/README.md)。
 
 ## 11. 测试与基准
 
