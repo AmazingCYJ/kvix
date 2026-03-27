@@ -25,6 +25,7 @@
 - [11. 测试与基准](#11-测试与基准)
 - [12. 目录结构说明](#12-目录结构说明)
 - [13. 当前边界与注意事项](#13-当前边界与注意事项)
+- [14. 部署说明](#14-部署说明)
 
 ## 1. 项目定位
 
@@ -854,3 +855,27 @@ kvix/
 - [redis/README.md](./redis/README.md)
 - [http/README.md](./http/README.md)
 - [benchmark/README.md](./benchmark/README.md)
+
+## 14. 部署说明
+
+项目当前最适合部署的入口是：
+
+```bash
+./http
+```
+
+为了让这个 HTTP 服务适合真实服务器长期运行，项目支持以下环境变量：
+
+- `KVIX_HTTP_ADDR`
+- `KVIX_HTTP_DATA_DIR`
+
+其中：
+
+- `KVIX_HTTP_ADDR` 用来指定监听地址
+- `KVIX_HTTP_DATA_DIR` 用来指定固定数据目录
+
+如果没有设置 `KVIX_HTTP_DATA_DIR`，服务会继续沿用示例模式，自动创建临时目录并在退出时清理；这适合本地演示，但不适合服务器部署。
+
+完整部署文档见：
+
+- [DEPLOYMENT.md](/Users/amazing/code/go/kvix/.worktrees/refactor-kvix-medium-layered/DEPLOYMENT.md)
