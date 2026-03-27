@@ -8,6 +8,7 @@ import (
 
 func expireAtFromTTL(ttl time.Duration) int64 {
 	if ttl <= 0 {
+		// 约定 TTL<=0 表示不设置过期时间。
 		return 0
 	}
 	return time.Now().Add(ttl).UnixNano()
@@ -45,6 +46,7 @@ func (rds *RedisDataStore) Set(key, value []byte, ttl time.Duration) error {
 	next.size = 1
 	next.head = 0
 	next.tail = 0
+	// 对 string 来说，size/head/tail 这些字段只是占位统一结构，不参与真实集合计算。
 
 	// 4. 将 metadata 和 payload 一次编码后写入 meta:<key>。
 	encoded, err := encodeMetadataWithValue(next, value)
@@ -56,6 +58,7 @@ func (rds *RedisDataStore) Set(key, value []byte, ttl time.Duration) error {
 
 // Get 依赖惰性过期和类型检查返回字符串 payload。
 func (rds *RedisDataStore) Get(key []byte) ([]byte, error) {
+	// findMetadataAndValue 会先执行惰性过期，因此这里拿到的结果已经是“当前仍可见”的状态。
 	meta, payload, err := rds.findMetadataAndValue(key)
 	if err != nil {
 		return nil, err
@@ -76,6 +79,7 @@ func (rds *RedisDataStore) Del(key []byte) (bool, error) {
 		return false, err
 	}
 	if meta == nil {
+		// 不存在的 key 删除后仍然视为“未发生删除”。
 		return false, nil
 	}
 	if err := rds.deleteMetadata(key); err != nil {
@@ -99,8 +103,10 @@ func (rds *RedisDataStore) Expire(key []byte, ttl time.Duration) (bool, error) {
 	meta.expireAt = expireAtFromTTL(ttl)
 	var encoded []byte
 	if meta.typ == redisTypeString {
+		// string 的 payload 和 metadata 共存在一个值里，所以更新 TTL 时要把 payload 一起带回去。
 		encoded, err = encodeMetadataWithValue(*meta, payload)
 	} else {
+		// 复合类型只需要更新 metadata 本体，真实元素仍在各自子键里。
 		encoded = encodeMetadata(*meta)
 	}
 	if err != nil {
@@ -123,10 +129,12 @@ func (rds *RedisDataStore) TTL(key []byte) (time.Duration, error) {
 		return 0, common.ErrKeyNotFound
 	}
 	if meta.expireAt == 0 {
+		// 没有过期时间时返回 -1，保持与 Redis 常见语义一致。
 		return time.Duration(-1), nil
 	}
 	remaining := time.Until(time.Unix(0, meta.expireAt))
 	if remaining < 0 {
+		// 即使时钟刚好跨过过期点，也不要返回负持续时间。
 		remaining = 0
 	}
 	return remaining, nil

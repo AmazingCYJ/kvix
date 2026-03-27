@@ -17,6 +17,7 @@ func (db *DB) Close() error {
 		}
 	}()
 	if db.activeFile == nil {
+		// 空库或尚未真正打开数据文件时，直接结束关闭流程即可。
 		return nil
 	}
 
@@ -28,6 +29,7 @@ func (db *DB) Close() error {
 	if err != nil {
 		return err
 	}
+	// 1. 把当前事务序列号写到独立文件里，供下次启动恢复继续递增。
 	record := &data.LogRecord{
 		Key:   []byte(seqNoKey),
 		Value: []byte(strconv.FormatUint(db.seqNo, 10)),
@@ -41,6 +43,7 @@ func (db *DB) Close() error {
 		return err
 	}
 
+	// 2. 再关闭活跃文件和所有旧文件，释放底层文件句柄。
 	if err := db.activeFile.Close(); err != nil {
 		return err
 	}
@@ -57,6 +60,7 @@ func (db *DB) Close() error {
 // 返回值表示同步是否成功；成功后可确保活跃文件中已有写入已经持久化。
 func (db *DB) Sync() error {
 	if db.activeFile == nil {
+		// 没有活跃文件说明当前没有可刷盘的数据。
 		return nil
 	}
 
@@ -74,6 +78,7 @@ func (db *DB) Stat() *Stat {
 
 	var dataFiles = uint(len(db.oldfiles))
 	if db.activeFile != nil {
+		// 统计时别忘了把当前活跃文件也算进去。
 		dataFiles++
 	}
 	diskSize, err := utils.GetDirSize(db.options.DirPath)
@@ -95,5 +100,6 @@ func (db *DB) Stat() *Stat {
 func (db *DB) BackUp(dir string) error {
 	db.mu.RLock()
 	defer db.mu.RUnlock()
+	// flock 文件只对“当前运行中的进程互斥”有意义，备份里不应复制它。
 	return utils.CopyDir(db.options.DirPath, dir, []string{fileLockName})
 }

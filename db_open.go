@@ -35,9 +35,11 @@ func Open(options Options) (*DB, error) {
 	fileLock := flock.New(filepath.Join(options.DirPath, fileLockName))
 	hold, err := fileLock.TryLock()
 	if err != nil {
+		// 锁文件本身访问失败时，说明目录权限或文件状态已经不正常，直接终止启动。
 		return nil, err
 	}
 	if !hold {
+		// TryLock 返回 hold=false 代表别的进程已经持有这个目录锁。
 		return nil, ErrDataBaseIsUsing
 	}
 
@@ -91,6 +93,7 @@ func Open(options Options) (*DB, error) {
 			return nil, err
 		}
 		if db.activeFile != nil {
+			// B+Tree 模式下索引不需要重放日志来恢复，但活跃文件下一次写入位置仍然要校正到文件末尾。
 			size, err := db.activeFile.IoManager.Size()
 			if err != nil {
 				return nil, err
@@ -105,9 +108,11 @@ func Open(options Options) (*DB, error) {
 // checkOptions 校验打开数据库所需的最小配置，避免启动阶段出现明显非法输入。
 func checkOptions(options Options) error {
 	if options.DirPath == "" {
+		// 没有目录就无法定位数据文件、索引文件和锁文件。
 		return errors.New("data directory path cannot be empty")
 	}
 	if options.DataFileSize <= 0 {
+		// 数据文件大小必须大于 0，否则活跃文件永远无法容纳任何记录。
 		return errors.New("data file size must be greater than zero")
 	}
 	return nil

@@ -13,6 +13,7 @@ type RedisDataStore struct {
 
 // NewRedisDataStore 构造 RedisDataStore。
 func NewRedisDataStore(options common.Options) (*RedisDataStore, error) {
+	// Redis 语义层本身不管理文件或索引，它直接复用底层 kvix 的打开流程。
 	db, err := kvix.Open(options)
 	if err != nil {
 		return nil, err
@@ -23,6 +24,7 @@ func NewRedisDataStore(options common.Options) (*RedisDataStore, error) {
 // Close 关闭底层数据库。
 func (rds *RedisDataStore) Close() error {
 	if rds == nil || rds.db == nil {
+		// 允许对空对象或已关闭对象重复调用 Close，方便上层做 defer。
 		return nil
 	}
 	return rds.db.Close()

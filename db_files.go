@@ -120,6 +120,7 @@ func (db *DB) loadIndexFromDataFiles() error {
 	for i, fid := range db.fileIds {
 		var fileId = uint32(fid)
 		if hasMerge && fileId < nonMergeFileId {
+			// 这些文件的数据已经被 merge 结果覆盖，重复回放只会把旧状态写回索引。
 			continue
 		}
 
@@ -139,6 +140,7 @@ func (db *DB) loadIndexFromDataFiles() error {
 			logRecord, size, err := dataFile.ReadLogRecord(offset)
 			if err != nil {
 				if errors.Is(err, io.EOF) || errors.Is(err, os.ErrClosed) {
+					// 读到文件末尾或文件已关闭时，说明当前文件回放完成。
 					break
 				}
 				return err
@@ -154,16 +156,19 @@ func (db *DB) loadIndexFromDataFiles() error {
 			// 5.1.2 从编码后的 key 里拆出真实 key 和事务序列号，决定这条记录如何参与索引恢复。
 			realKey, seqNo := parseLogRecordKey(logRecord.Key)
 			if seqNo == nonTransactionSeqNo {
+				// 普通非事务记录可以立即参与索引恢复。
 				updateIndex(realKey, logRecord.Type, pos)
 			} else {
 				// 带事务序列号的记录需要先看它是不是“事务完成标记”。
 				if logRecord.Type == data.LogRecordTxnFinished {
+					// 读到完成标记后，说明这个 seqNo 对应的整批事务终于可以整体生效了。
 					for _, record := range TransactionRecords[seqNo] {
 						realKey, _ := parseLogRecordKey(record.Record.Key)
 						updateIndex(realKey, record.Record.Type, record.Pos)
 					}
 					delete(TransactionRecords, seqNo)
 				} else {
+					// 尚未完成的事务记录先暂存，等对应完成标记出现后再统一写索引。
 					TransactionRecords[seqNo] = append(TransactionRecords[seqNo], &data.TransactionRecord{
 						Record: logRecord,
 						Pos:    pos,
@@ -194,6 +199,7 @@ func (db *DB) loadIndexFromDataFiles() error {
 func (db *DB) logSeqNo() error {
 	fileName := filepath.Join(db.options.DirPath, SeqNoFileName)
 	if _, err := os.Stat(fileName); os.IsNotExist(err) {
+		// 没有 seq-no 文件通常说明当前还是第一次启动，或尚未执行过事务批量写。
 		return nil
 	}
 	seqNoFile, err := data.OpenSeqNoFile(db.options.DirPath)
@@ -201,6 +207,7 @@ func (db *DB) logSeqNo() error {
 		return err
 	}
 	record, _, err := seqNoFile.ReadLogRecord(0)
+	// seq-no 文件里只存一条记录，其 value 是十进制文本格式的事务序列号。
 	seqNo, err := strconv.ParseUint(string(record.Value), 10, 64)
 	if err != nil {
 		return err
@@ -213,7 +220,9 @@ func (db *DB) logSeqNo() error {
 // parseLogRecordKey 解析日志记录中的编码 key，分离出真实 key 和事务序列号。
 // 批量事务会把 seqNo 编到 key 前缀里，普通 Put/Delete 则使用固定的非事务序号。
 func parseLogRecordKey(key []byte) ([]byte, uint64) {
+	// Uvarint 返回“解析出的序列号 + 占用了前缀多少字节”。
 	seqNo, n := binary.Uvarint(key)
+	// 跳过前缀剩下的部分，就是真实业务 key。
 	realKey := key[n:]
 	return realKey, seqNo
 }
@@ -223,6 +232,7 @@ func (db *DB) resetIoType() error {
 	if db.activeFile == nil {
 		return nil
 	}
+	// 活跃文件和旧文件都要统一切回标准文件 IO，避免运行期继续持有只读 mmap 句柄。
 	if err := db.activeFile.SetIOManager(db.options.DirPath, fio.StandardFIO); err != nil {
 		return err
 	}
