@@ -17,6 +17,8 @@ type BTree struct {
 	lock *sync.RWMutex
 }
 
+// NewBTree 创建一个基于 google/btree 的内存索引。
+// degree=32 是当前树的分叉因子，它影响节点容量与树高，是性能和内存之间的一个经验折中。
 func NewBTree() *BTree {
 	return &BTree{
 		tree: btree.New(32), // 32 是 BTree 的 degree，可以根据实际情况调整
@@ -36,7 +38,7 @@ func (bt *BTree) Put(key []byte, pos *data.LogRecordPos) *data.LogRecordPos {
 	return oldItem.(*Item).pos
 }
 
-// Get 查询 key 对应的位置，不存在时返回 ErrKeyNotFound。
+// Get 查询 key 对应的位置；如果不存在，返回 nil。
 func (bt *BTree) Get(key []byte) *data.LogRecordPos {
 	bt.lock.RLock()
 	defer bt.lock.RUnlock()
@@ -60,7 +62,7 @@ func (bt *BTree) Delete(key []byte) (*data.LogRecordPos, bool) {
 	return oldItem.(*Item).pos, true
 }
 
-// / Size 返回索引中键值对的数量。
+// Size 返回索引中键值对的数量。
 func (bt *BTree) Size() int {
 	bt.lock.RLock()
 	defer bt.lock.RUnlock()
@@ -75,6 +77,8 @@ func (bt *BTree) Iterator(reverse bool) IndexIterator {
 
 	return newBTreeIterator(bt.tree, reverse)
 }
+
+// Close 对纯内存 BTree 来说没有额外资源需要释放。
 func (bt *BTree) Close() error {
 	return nil
 }
@@ -86,7 +90,8 @@ type BTreeIterator struct {
 	item      []*Item // key + 位置索引信息
 }
 
-// newBTreeIterator 创建一个新的 BTreeIterator 实例。
+// newBTreeIterator 会先把当前树内容拷贝成一个有序快照。
+// 后续迭代只在切片上进行，因此不会长时间占用 BTree 的读锁。
 func newBTreeIterator(tree *btree.BTree, reverse bool) *BTreeIterator {
 	var idx int
 	values := make([]*Item, tree.Len())
@@ -115,7 +120,8 @@ func (bti *BTreeIterator) Rewind() {
 	bti.currIndex = 0
 }
 
-// Seek 将迭代器移动到指定 key 的位置。
+// Seek 基于当前快照用二分查找定位目标位置。
+// 正向迭代找第一个 >= key 的元素，反向迭代找第一个 <= key 的元素。
 func (bti *BTreeIterator) Seek(key []byte) {
 	if bti.reverse {
 		bti.currIndex = sort.Search(len(bti.item), func(i int) bool {
@@ -156,7 +162,7 @@ func (bti *BTreeIterator) Value() *data.LogRecordPos {
 	return nil
 }
 
-// Close 关闭迭代器，释放相关资源。
+// Close 释放快照切片引用，帮助 GC 回收。
 func (bti *BTreeIterator) Close() {
 	bti.item = nil
 }

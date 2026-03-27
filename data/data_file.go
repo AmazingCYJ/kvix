@@ -15,13 +15,15 @@ import (
 type DataFile struct {
 	FileID    uint32        // 文件ID
 	WriteOff  int64         // 当前写入偏移
-	IoManager fio.IOManager //io读写管理
+	IoManager fio.IOManager // 底层 IO 抽象，屏蔽标准文件与 mmap 的差异
 }
 
-// CRC type Keysize ValueSize
+// maxLogRecordHeardSize 是单条日志记录头部可能占用的最大字节数。
+// 组成分别是：CRC(4) + Type(1) + KeySize(varint) + ValueSize(varint)。
 const maxLogRecordHeardSize = 4 + 1 + binary.MaxVarintLen32 + binary.MaxVarintLen32
 
-// OpenDataFile 打开一个数据文件
+// OpenDataFile 按文件 ID 打开一个普通数据文件。
+// 例如 fileID=1 会映射到 000000001.data 这样的真实文件名。
 func OpenDataFile(dirPath string, fileID uint32, ioType fio.FileIOType) (*DataFile, error) {
 	//1.构建数据文件路径
 	filePath := filepath.Join(dirPath, fmt.Sprintf("%09d", fileID)+DataFileSuffix)
@@ -29,24 +31,27 @@ func OpenDataFile(dirPath string, fileID uint32, ioType fio.FileIOType) (*DataFi
 	return newDatafile(filePath, fileID, ioType)
 }
 
-// OpenHintFile 打开Hint文件
+// OpenHintFile 打开 Hint 文件。
+// Hint 文件本质上也是一个数据文件，只是里面保存的是 key -> LogRecordPos 的索引快照。
 func OpenHintFile(dirPath string) (*DataFile, error) {
 	filePath := filepath.Join(dirPath, HintFileName)
 	return newDatafile(filePath, 0, fio.StandardFIO)
 }
 
-// OpenMergeDataFile 打开Merge完成标记文件
+// OpenMergeDataFile 打开 merge 完成标记文件。
+// 这个文件用来告诉启动恢复逻辑：上次 merge 是否已经完整结束，以及边界文件 ID 是多少。
 func OpenMergeDataFile(dirPath string) (*DataFile, error) {
 	filePath := filepath.Join(dirPath, MergeFinishedFileName)
 	return newDatafile(filePath, 0, fio.StandardFIO)
 }
 
-// OpenSeqNoFile 打开序列号文件
+// OpenSeqNoFile 打开事务序列号持久化文件。
 func OpenSeqNoFile(dirPath string) (*DataFile, error) {
 	filePath := filepath.Join(dirPath, SeqNoFileName)
 	return newDatafile(filePath, 0, fio.StandardFIO)
 }
 
+// GetDataFileName 根据目录和文件 ID 生成标准数据文件路径。
 func GetDataFileName(dirPath string, fileID uint32) string {
 	return filepath.Join(dirPath, fmt.Sprintf("%09d", fileID)+DataFileSuffix)
 }
@@ -64,6 +69,8 @@ func (df *DataFile) WriteHintRecord(key []byte, pos *LogRecordPos) error {
 	return df.Write(encRecord)
 }
 
+// newDatafile 是统一的数据文件构造入口。
+// 它负责选择底层 IO 实现，并把文件对象包装成上层可用的 DataFile。
 func newDatafile(filePath string, fileID uint32, ioType fio.FileIOType) (*DataFile, error) {
 	//1.创建IOManager实例
 	ioManager, err := fio.NewIOManager(filePath, ioType)
@@ -78,13 +85,18 @@ func newDatafile(filePath string, fileID uint32, ioType fio.FileIOType) (*DataFi
 	}, nil
 }
 
+// Sync 把当前 DataFile 的操作系统缓冲区显式落盘。
 func (df *DataFile) Sync() error {
 	return df.IoManager.Sync()
 }
 
+// Close 关闭当前 DataFile 持有的底层 IO 资源。
 func (df *DataFile) Close() error {
 	return df.IoManager.Close()
 }
+
+// Write 以追加写方式把一段字节写入数据文件，并同步推进 WriteOff。
+// WriteOff 总是表示“下一次写入应该落到哪里”。
 func (df *DataFile) Write(p []byte) error {
 	n, err := df.IoManager.Write(p)
 	if err != nil {
@@ -147,12 +159,16 @@ func (df *DataFile) ReadLogRecord(off int64) (*LogRecord, int64, error) {
 	return logRecord, recordSize, nil
 }
 
+// readNBytes 是对底层 ReadAt 的一个薄封装。
+// 调用方给定偏移和长度后，它返回该物理区间的原始字节。
 func (df *DataFile) readNBytes(n int64, offset int64) (b []byte, err error) {
 	b = make([]byte, n)
 	_, err = df.IoManager.ReadAt(b, offset)
 	return
 }
 
+// SetIOManager 关闭当前 IO 实现并按同一文件路径重新打开另一种实现。
+// 它主要用于“启动恢复阶段使用 mmap，恢复完成后切回标准文件 IO”这类场景。
 func (df *DataFile) SetIOManager(dirPath string, ioType fio.FileIOType) error {
 	if err := df.IoManager.Close(); err != nil {
 		return err
