@@ -72,7 +72,7 @@ func (db *DB) merge() error {
 		return err
 	}
 
-	// 2.4 记录未参与本次 merge 的起始文件 ID，供加载阶段清理旧文件时使用。
+	// 2.4 记录最近一个没有参与本次 merge 的活跃文件 ID，启动接管时据此识别 merge 边界。
 	nonMergeFileID := db.activeFile.FileID
 
 	// 2.5 收集所有需要参与 merge 的旧数据文件。
@@ -159,7 +159,7 @@ func (db *DB) merge() error {
 		return err
 	}
 
-	// 5.1 完成标记记录最近未参与 merge 的文件 ID，启动时据此搬运文件。
+	// 5.1 完成标记保存最近一个没有参与本次 merge 的活跃文件 ID，启动时据此判断哪些旧文件已被本次 merge 覆盖。
 	finishFile, err := data.OpenMergeDataFile(mergePath)
 	if err != nil {
 		return err
@@ -230,7 +230,7 @@ func (db *DB) loadMegreFiles() error {
 		return err
 	}
 
-	// 3. 删除已经被 merge 结果覆盖的旧数据文件。
+	// 3. 删除本次 merge 已覆盖的旧数据文件，边界为所有文件 ID 小于该活跃文件 ID 的历史文件。
 	var filedId uint32
 	for filedId = 0; filedId <= nonMergeFileId; filedId++ {
 		fileName := data.GetDataFileName(db.options.DirPath, filedId)
@@ -252,7 +252,7 @@ func (db *DB) loadMegreFiles() error {
 	return nil
 }
 
-// getNonMergeFileId 从 merge 完成标识中解析最近未参与 merge 的文件 ID。
+// getNonMergeFileId 从 merge 完成标识中解析最近一个没有参与本次 merge 的活跃文件 ID。
 func (db *DB) getNonMergeFileId(dirPath string) (uint32, error) {
 	mergeFinishedFile, err := data.OpenMergeDataFile(dirPath)
 	if err != nil {
