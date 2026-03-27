@@ -134,11 +134,30 @@ KVIX_HTTP_ADDR=127.0.0.1:9090 go run ./http
 
 ### 6.3 数据目录说明
 
-示例服务默认会创建一个临时数据库目录，而不是直接用固定路径。这样做的好处是：
+示例服务支持通过环境变量指定固定数据目录：
+
+```bash
+KVIX_HTTP_DATA_DIR=/var/lib/kvix-http/data go run ./http
+```
+
+如果没有设置 `KVIX_HTTP_DATA_DIR`，服务默认会创建一个临时数据库目录，而不是直接用固定路径。这样做的好处是：
 
 - 不污染本地已有数据
 - 示例服务更容易直接启动
 - 测试与演示环境更隔离
+
+如果你是在服务器上长期运行，推荐同时显式设置：
+
+- `KVIX_HTTP_ADDR`
+- `KVIX_HTTP_DATA_DIR`
+
+例如：
+
+```bash
+KVIX_HTTP_ADDR=0.0.0.0:8080 \
+KVIX_HTTP_DATA_DIR=/var/lib/kvix-http/data \
+go run ./http
+```
 
 ## 7. 接口示例
 

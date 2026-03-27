@@ -9,16 +9,21 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/gofiber/fiber/v2"
 )
 
-const defaultListenAddr = "127.0.0.1:8080"
+const (
+	defaultListenAddr = "127.0.0.1:8080"
+	httpAddrEnvKey    = "KVIX_HTTP_ADDR"
+	httpDataDirEnvKey = "KVIX_HTTP_DATA_DIR"
+)
 
 // main 启动 kvix HTTP 示例服务，并在进程退出时优雅关闭。
 func main() {
-	db, cleanup, err := openTempDB()
+	db, cleanup, err := openConfiguredDB()
 	if err != nil {
 		log.Fatalf("failed to open db: %v", err)
 	}
@@ -41,7 +46,7 @@ func main() {
 		}
 	}()
 
-	addr := os.Getenv("KVIX_HTTP_ADDR")
+	addr := os.Getenv(httpAddrEnvKey)
 	if addr == "" {
 		addr = defaultListenAddr
 	}
@@ -51,32 +56,46 @@ func main() {
 	}
 }
 
-// openTempDB 为 HTTP 示例创建一个临时目录数据库，并返回清理函数。
-func openTempDB() (*kvix.DB, func(), error) {
-	// 1. 基于默认配置创建临时目录，避免示例服务污染用户已有数据目录。
-	option := common.DefaultOptions
-	dir, err := os.MkdirTemp("", "kvix-http")
+// openConfiguredDB 按环境变量决定使用固定数据目录还是临时目录，并返回对应清理函数。
+func openConfiguredDB() (*kvix.DB, func(), error) {
+	// 1. 先解析本次启动应该使用哪个数据目录。
+	dir, cleanup, err := resolveDataDir()
 	if err != nil {
 		return nil, nil, err
 	}
-	option.DirPath = dir
 
-	// 2. 打开数据库；如果失败，立即回收临时目录。
+	// 2. 基于默认数据库配置打开 kvix 实例，只把数据目录替换成解析结果。
+	option := common.DefaultOptions
+	option.DirPath = dir
 	db, err := kvix.Open(option)
 	if err != nil {
-		_ = os.RemoveAll(dir)
+		cleanup()
 		return nil, nil, err
 	}
 
-	// 3. 返回清理函数，供调用方在退出时统一删除临时目录。
+	// 3. 启动日志里显式输出最终数据目录，方便部署排障和确认持久化位置。
+	log.Printf("kvix http db initialized at %s", dir)
+	return db, cleanup, nil
+}
+
+// resolveDataDir 返回 HTTP 服务本次运行应使用的数据目录和对应清理函数。
+func resolveDataDir() (string, func(), error) {
+	// 1. 显式配置了 KVIX_HTTP_DATA_DIR 时，优先使用固定目录，适合服务器部署。
+	if dir := strings.TrimSpace(os.Getenv(httpDataDirEnvKey)); dir != "" {
+		return dir, func() {}, nil
+	}
+
+	// 2. 未配置时沿用原来的示例行为：创建临时目录，退出后再清理。
+	dir, err := os.MkdirTemp("", "kvix-http")
+	if err != nil {
+		return "", nil, err
+	}
 	cleanup := func() {
 		if err := os.RemoveAll(dir); err != nil {
 			log.Printf("failed to remove temp dir %s: %v", dir, err)
 		}
 	}
-
-	log.Printf("kvix http db initialized at %s", dir)
-	return db, cleanup, nil
+	return dir, cleanup, nil
 }
 
 // errorHandler 统一把领域错误和 Fiber 错误转换为固定 JSON 响应。
