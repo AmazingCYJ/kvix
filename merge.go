@@ -17,13 +17,14 @@ const (
 	mergeFinisedKey = "merge.finished"
 )
 
-// Merge 清理无效数据 生成 Hint文件
+// merge 将仍然有效的历史数据重写到临时目录，并生成 Hint 文件加速后续启动。
 func (db *DB) merge() error {
-	//1.如果数据库中没有数据文件，则不需要合并
+	// 1. 先做合并前置检查，确认当前状态值得执行 merge。
 	if db.activeFile == nil {
 		return nil
 	}
-	//2.如果正在进行合并操作，直接返回错误
+
+	// 1.1 合并过程需要独占切换活跃文件，先持有数据库写锁。
 	db.mu.Lock()
 	if db.isMerging {
 		db.mu.Unlock()
@@ -34,7 +35,7 @@ func (db *DB) merge() error {
 		db.mu.Unlock()
 		return err
 	}
-	//如果废弃数据占比小于合并阈值，也不需要进行合并
+	// 1.2 废弃数据占比不足时直接退出，避免无意义的重写成本。
 	if db.reclaimSize == 0 || float32(db.reclaimSize)/float32(totalSize) < db.options.DataFileMergeRatio {
 		db.mu.Unlock()
 		return nil
@@ -44,7 +45,7 @@ func (db *DB) merge() error {
 		db.mu.Unlock()
 		return err
 	}
-	//如果可用磁盘空间不足以存储合并后的数据文件，也不进行合并，避免磁盘空间不足导致数据库不可用
+	// 1.3 预留足够磁盘空间，避免 merge 过程中写满磁盘导致实例不可用。
 	if availableDiskSpace <= uint64(totalSize-db.reclaimSize) {
 		db.mu.Unlock()
 		return common.ErrNoEnoughDiskSpace
@@ -54,30 +55,37 @@ func (db *DB) merge() error {
 	defer func() {
 		db.isMerging = false
 	}()
-	//3.\*合并过程*:
-	//3.1持久化活跃文件
+
+	// 2. 切换活跃文件，让后续新写入落到新文件中，旧文件集合才可以安全参与 merge。
+	// 2.1 先持久化当前活跃文件，确保参与 merge 的数据完整可读。
 	if err := db.activeFile.Sync(); err != nil {
 		db.mu.Unlock()
 		return err
 	}
-	//3.2将当前活跃文件转换为旧活跃文件
+
+	// 2.2 当前活跃文件转入旧文件集合，后续作为 merge 输入。
 	db.oldfiles[db.activeFile.FileID] = db.activeFile
-	//3.3打开一个新的活跃文件
+
+	// 2.3 打开新的活跃文件，及时恢复前台写入能力。
 	if err := db.setActiveDataFile(); err != nil {
 		db.mu.Unlock()
 		return err
 	}
 
-	// 记录最近没有参与merge的文件ID
+	// 2.4 记录未参与本次 merge 的起始文件 ID，供加载阶段清理旧文件时使用。
 	nonMergeFileID := db.activeFile.FileID
-	//3.4取出所有旧的活跃文件
+
+	// 2.5 收集所有需要参与 merge 的旧数据文件。
 	var mergeFiles []*data.DataFile
 	for _, oldFile := range db.oldfiles {
 		mergeFiles = append(mergeFiles, oldFile)
 	}
-	//3.5 释放锁 此时其他数据可以写入活跃文件中
+
+	// 2.6 释放写锁，后续重写旧文件时不阻塞新的前台写入。
 	db.mu.Unlock()
-	//3.6将merge文件从小到大排序
+
+	// 3. 准备临时 merge 目录和目标数据库实例。
+	// 3.1 按文件 ID 从小到大处理，保持重写顺序稳定。
 	sort.Slice(mergeFiles, func(i, j int) bool {
 		return mergeFiles[i].FileID < mergeFiles[j].FileID
 	})
@@ -87,52 +95,54 @@ func (db *DB) merge() error {
 			return err
 		}
 	}
-	//3.7创建merge 目录
+
+	// 3.2 创建全新的 merge 目录，避免残留数据污染本次结果。
 	if err := os.Mkdir(mergePath, os.ModePerm); err != nil {
 		return err
 	}
 	mergeOptions := db.options
 	mergeOptions.DirPath = mergePath
-	mergeOptions.SyncWrites = false //合并过程中不需要每次写入都同步磁盘，等合并完成后再统一同步一次
+	mergeOptions.SyncWrites = false // 合并过程中统一在尾部刷盘即可。
 
-	//打开一个新的临时 kvix 数据库实例，使用 merge 目录作为数据目录
+	// 3.3 打开临时数据库实例，把有效记录重写到 merge 目录。
 	mergeDB, err := Open(mergeOptions)
 	if err != nil {
 		return err
 	}
-	// 打开hint 文件存储索引
+
+	// 3.4 同时打开 Hint 文件，用来记录 merge 后的新索引位置。
 	hintFile, err := data.OpenHintFile(mergePath)
 	if err != nil {
 		return err
 	}
 	defer hintFile.Close()
 
-	//3.8遍历处理每个数据文件
+	// 4. 顺序扫描旧数据文件，只重写当前索引仍然指向的有效记录。
 	for _, dataFile := range mergeFiles {
 		var offset int64 = 0
 		for {
-			//从数据文件中读取一条日志记录
+			// 4.1 逐条读取旧文件中的日志记录。
 			logRecord, size, err := dataFile.ReadLogRecord(offset)
 			if err != nil {
 				if err == io.EOF {
-					break //文件末尾，停止读取
+					break // 文件末尾，停止读取。
 				}
 				return err
 			}
-			// 解析日志记录的 key，获取原始 key 和事务序列号
+
+			// 4.2 解析出原始 key，并和内存索引比对确认这条记录仍然有效。
 			realKey, _ := parseLogRecordKey(logRecord.Key)
 			logRecordPos := db.index.Get(realKey)
-			// 和内存中的索引位置进行比较,如果有效则重写
 			if logRecordPos != nil &&
 				logRecordPos.Fid == dataFile.FileID &&
 				logRecordPos.Offset == offset {
-				// 清除事务标记
+				// 4.3 重写有效记录时去掉事务序列号，merge 后数据按普通记录存储。
 				logRecord.Key = logRecordKeyWithSeq(realKey, nonTransactionSeqNo)
 				pos, err := mergeDB.appendLogRecord(logRecord)
 				if err != nil {
 					return err
 				}
-				// 将位置索引写到Hint文件中
+				// 4.4 同步把新位置写入 Hint 文件，供后续快速重建索引。
 				if err := hintFile.WriteHintRecord(realKey, pos); err != nil {
 					return err
 				}
@@ -141,14 +151,15 @@ func (db *DB) merge() error {
 		}
 	}
 
-	//sync hint 文件，确保索引数据持久化到磁盘
+	// 5. 刷盘 Hint 和 merge 数据，并写入 merge 完成标记。
 	if err := hintFile.Sync(); err != nil {
 		return err
 	}
 	if err := mergeDB.Sync(); err != nil {
 		return err
 	}
-	//添加merge完成标识
+
+	// 5.1 完成标记记录最近未参与 merge 的文件 ID，启动时据此搬运文件。
 	finishFile, err := data.OpenMergeDataFile(mergePath)
 	if err != nil {
 		return err
@@ -162,7 +173,8 @@ func (db *DB) merge() error {
 	if err := finishFile.Write(encRecord); err != nil {
 		return err
 	}
-	// sync merge完成标识文件，确保数据持久化到磁盘
+
+	// 5.2 单独刷盘完成标记，避免 merge 结果落地不完整。
 	if err := finishFile.Sync(); err != nil {
 		return err
 	}
@@ -171,17 +183,21 @@ func (db *DB) merge() error {
 
 // tmp/kvix
 // tmp/kvix-merge
+// getMergePath 返回当前数据库对应的临时 merge 目录路径。
 func (db *DB) getMergePath() string {
-	//1.返回tmp/
+	// 1. 取数据目录的父目录作为 merge 临时目录的根。
 	dir := path.Dir(path.Clean(db.options.DirPath))
-	///2.返回kvix目录名
+
+	// 2. 使用原目录名加 merge 后缀，保证和正式数据目录并列。
 	base := path.Base(db.options.DirPath)
 	return filepath.Join(dir, base+mergeFileSuffix)
 }
 
+// loadMegreFiles 在数据库启动阶段接管上次 merge 产生的临时结果。
 func (db *DB) loadMegreFiles() error {
 	mergePath := db.getMergePath()
-	//1.检查merge完成标识文件是否存在，如果不存在，说明没有未完成的合并操作，直接返回
+
+	// 1. merge 目录不存在时说明没有待接管的 merge 结果。
 	if _, err := os.Stat(mergePath); os.IsNotExist(err) {
 		return nil
 	}
@@ -192,7 +208,8 @@ func (db *DB) loadMegreFiles() error {
 	if err != nil {
 		return err
 	}
-	// 查找标识merege完成的文件,判断merge是否完成
+
+	// 2. 只有在完成标记存在时才接管目录内容，否则视为未完成 merge。
 	var mergeFinished bool
 	var mergeFinFileNames []string
 	for _, entry := range dirEntries {
@@ -212,7 +229,8 @@ func (db *DB) loadMegreFiles() error {
 	if err != nil {
 		return err
 	}
-	// 删除旧数据文件
+
+	// 3. 删除已经被 merge 结果覆盖的旧数据文件。
 	var filedId uint32
 	for filedId = 0; filedId <= nonMergeFileId; filedId++ {
 		fileName := data.GetDataFileName(db.options.DirPath, filedId)
@@ -222,7 +240,8 @@ func (db *DB) loadMegreFiles() error {
 			}
 		}
 	}
-	// 将merge目录下的Hint文件和数据文件移动到原数据目录下
+
+	// 4. 将 merge 目录里的新数据文件和 Hint 文件搬回正式目录。
 	for _, fileName := range mergeFinFileNames {
 		srcPath := filepath.Join(mergePath, fileName)
 		destPath := filepath.Join(db.options.DirPath, fileName)
@@ -233,7 +252,7 @@ func (db *DB) loadMegreFiles() error {
 	return nil
 }
 
-// getNonMergeFileId 从merge完成标识文件中获取最近没有参与merge的文件ID
+// getNonMergeFileId 从 merge 完成标识中解析最近未参与 merge 的文件 ID。
 func (db *DB) getNonMergeFileId(dirPath string) (uint32, error) {
 	mergeFinishedFile, err := data.OpenMergeDataFile(dirPath)
 	if err != nil {
@@ -250,19 +269,21 @@ func (db *DB) getNonMergeFileId(dirPath string) (uint32, error) {
 	return uint32(nonMergeFileId), nil
 }
 
-// 从hint文件中加载索引数据
+// loadIndexFromHintFile 从 Hint 文件恢复索引，减少启动时的数据扫描成本。
 func (db *DB) loadIndexFromHintFile() error {
-	// 查看hint文件是否存在，如果不存在，说明没有可用的hint文件，直接返回
+	// 查看 hint 文件是否存在，如果不存在，说明没有可复用的索引快照。
 	hintFileName := filepath.Join(db.options.DirPath, common.HintFileName)
 	if _, err := os.Stat(hintFileName); os.IsNotExist(err) {
 		return nil
 	}
-	// 打开hint 文件
+
+	// 打开 Hint 文件并按顺序回放其中的索引记录。
 	hintFile, err := data.OpenHintFile(db.options.DirPath)
 	if err != nil {
 		return err
 	}
-	// 读取hint文件中的索引记录，更新内存索引
+
+	// 逐条读取 Hint 记录，恢复 key 到日志位置的映射。
 	var offset int64 = 0
 	for {
 		logRecord, size, err := hintFile.ReadLogRecord(offset)
