@@ -30,6 +30,7 @@ func (art *AdaptiveRadixTree) Put(key []byte, pos *data.LogRecordPos) *data.LogR
 	art.lock.Lock()
 	defer art.lock.Unlock()
 
+	// Insert 返回“旧值 + 是否更新已有键”，正好能让上层判断是否覆盖了旧记录。
 	oldValue, updated := art.tree.Insert(goart.Key(key), pos)
 	if !updated {
 		return nil
@@ -47,6 +48,7 @@ func (art *AdaptiveRadixTree) Get(key []byte) *data.LogRecordPos {
 	art.lock.RLock()
 	defer art.lock.RUnlock()
 
+	// go-adaptive-radix-tree 返回的是泛型 interface{}，这里需要再断言回具体位置类型。
 	value, found := art.tree.Search(goart.Key(key))
 	if !found {
 		return nil
@@ -63,6 +65,7 @@ func (art *AdaptiveRadixTree) Delete(key []byte) (*data.LogRecordPos, bool) {
 	art.lock.Lock()
 	defer art.lock.Unlock()
 
+	// Delete 同时返回旧值和是否真的删掉了节点。
 	oldValue, deleted := art.tree.Delete(goart.Key(key))
 	if !deleted {
 		return nil, false
@@ -90,8 +93,11 @@ func (art *AdaptiveRadixTree) Iterator(reverse bool) IndexIterator {
 	art.lock.RLock()
 	defer art.lock.RUnlock()
 
+	// 和其他索引实现一样，这里返回的是快照迭代器，避免后续遍历长期占用树锁。
 	return newARTIterator(art.tree, reverse)
 }
+
+// Close 对纯内存 ART 没有额外资源需要回收。
 func (art *AdaptiveRadixTree) Close() error {
 	return nil
 }
@@ -109,6 +115,7 @@ func newARTIterator(tree goart.Tree, reverse bool) *ARTIterator {
 	items := make([]*Item, 0, tree.Size())
 	it := tree.Iterator()
 	for it.HasNext() {
+		// 逐个把树节点复制进 items，后续 Seek/Next 都只在切片上运行。
 		node, err := it.Next()
 		if err != nil {
 			break
@@ -144,10 +151,12 @@ func (ai *ARTIterator) Rewind() {
 // 反向迭代时定位到第一个 <= key 的位置。
 func (ai *ARTIterator) Seek(key []byte) {
 	if ai.reverse {
+		// 反向时 items 已经翻转为降序，因此查找条件也要变成 <= key。
 		ai.currIndex = sort.Search(len(ai.items), func(i int) bool {
 			return bytes.Compare(ai.items[i].key, key) <= 0
 		})
 	} else {
+		// 正向时定位到第一个大于等于目标 key 的位置。
 		ai.currIndex = sort.Search(len(ai.items), func(i int) bool {
 			return bytes.Compare(ai.items[i].key, key) >= 0
 		})

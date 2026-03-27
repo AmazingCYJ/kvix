@@ -31,6 +31,7 @@ func (bt *BTree) Put(key []byte, pos *data.LogRecordPos) *data.LogRecordPos {
 	bt.lock.Lock()
 	defer bt.lock.Unlock()
 
+	// ReplaceOrInsert 会在 key 已存在时返回旧节点，不存在时返回 nil。
 	oldItem := bt.tree.ReplaceOrInsert(&Item{key: key, pos: pos})
 	if oldItem == nil {
 		return nil
@@ -43,6 +44,7 @@ func (bt *BTree) Get(key []byte) *data.LogRecordPos {
 	bt.lock.RLock()
 	defer bt.lock.RUnlock()
 
+	// 查询时构造一个只包含 key 的临时 Item 作为查找模板即可。
 	item := bt.tree.Get(&Item{key: key})
 	if item == nil {
 		return nil
@@ -55,6 +57,7 @@ func (bt *BTree) Delete(key []byte) (*data.LogRecordPos, bool) {
 	bt.lock.Lock()
 	defer bt.lock.Unlock()
 
+	// Delete 返回被删除的旧节点，便于上层统计旧记录占用的空间。
 	oldItem := bt.tree.Delete(&Item{key: key})
 	if oldItem == nil {
 		return nil, false
@@ -96,12 +99,14 @@ func newBTreeIterator(tree *btree.BTree, reverse bool) *BTreeIterator {
 	var idx int
 	values := make([]*Item, tree.Len())
 	if reverse {
+		// Descend 会按降序遍历整棵树，得到的切片天然就是反向快照。
 		tree.Descend(func(i btree.Item) bool {
 			values[idx] = i.(*Item)
 			idx++
 			return true
 		})
 	} else {
+		// Ascend 会按升序遍历整棵树，得到正向快照。
 		tree.Ascend(func(i btree.Item) bool {
 			values[idx] = i.(*Item)
 			idx++
@@ -124,10 +129,12 @@ func (bti *BTreeIterator) Rewind() {
 // 正向迭代找第一个 >= key 的元素，反向迭代找第一个 <= key 的元素。
 func (bti *BTreeIterator) Seek(key []byte) {
 	if bti.reverse {
+		// 降序切片中，第一个 <= key 的位置就是反向查找的起点。
 		bti.currIndex = sort.Search(len(bti.item), func(i int) bool {
 			return bytes.Compare(bti.item[i].key, key) <= 0
 		})
 	} else {
+		// 升序切片中，第一个 >= key 的位置就是正向查找的起点。
 		bti.currIndex = sort.Search(len(bti.item), func(i int) bool {
 			return bytes.Compare(bti.item[i].key, key) >= 0
 		})

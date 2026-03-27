@@ -29,6 +29,7 @@ func NewBPlusTree(dirPath string, syncWrites bool) *BPlusTree {
 	opts.NoSync = !syncWrites
 	// Avoid blocking indefinitely when another process already holds the file lock.
 	opts.Timeout = 100 * time.Millisecond
+	// bbolt 索引文件和数据文件位于同一目录，便于整体备份和移动。
 	path := filepath.Join(dirPath, bptreeIndexFiuleName)
 	db, err := bbolt.Open(path, os.ModePerm, opts)
 	if err != nil {
@@ -36,6 +37,7 @@ func NewBPlusTree(dirPath string, syncWrites bool) *BPlusTree {
 	}
 	bpt := &BPlusTree{tree: db, bkt: indexBucketName}
 	if err := bpt.tree.Update(func(tx *bbolt.Tx) error {
+		// 首次打开时确保 bucket 已存在，后续 Put/Get/Delete 都假定它可用。
 		_, err := tx.CreateBucketIfNotExists(bpt.bkt)
 		return err
 	}); err != nil {
@@ -53,16 +55,19 @@ func (bpt *BPlusTree) Put(key []byte, pos *data.LogRecordPos) *data.LogRecordPos
 		bucket := tx.Bucket(bpt.bkt)
 		if bucket == nil {
 			var err error
+			// 正常情况下 bucket 已经在构造函数里创建过，这里只是兜底。
 			bucket, err = tx.CreateBucketIfNotExists(bpt.bkt)
 			if err != nil {
 				return err
 			}
 		}
 		if oldValue := bucket.Get(key); len(oldValue) != 0 {
+			// 从 bbolt 读出来的切片只在事务生命周期内有效，因此要先复制再解码。
 			buf := make([]byte, len(oldValue))
 			copy(buf, oldValue)
 			oldPos = data.DecodeLogRecordPos(buf)
 		}
+		// 写入的是编码后的 LogRecordPos，而不是 value 本体。
 		return bucket.Put(key, data.EncodeLogRecordPos(pos))
 	})
 	if err != nil {
@@ -83,6 +88,7 @@ func (bpt *BPlusTree) Get(key []byte) *data.LogRecordPos {
 		if len(value) == 0 {
 			return nil
 		}
+		// 同样需要复制一份，避免事务结束后引用失效。
 		buf := make([]byte, len(value))
 		copy(buf, value)
 		result = data.DecodeLogRecordPos(buf)
@@ -106,6 +112,7 @@ func (bpt *BPlusTree) Delete(key []byte) (*data.LogRecordPos, bool) {
 		if oldValue == nil {
 			return nil
 		}
+		// 先解析出旧位置，再删除 bucket 条目，供上层统计可回收空间。
 		buf := make([]byte, len(oldValue))
 		copy(buf, oldValue)
 		oldPos = data.DecodeLogRecordPos(buf)
@@ -129,6 +136,7 @@ func (bpt *BPlusTree) Size() int {
 		if bucket == nil {
 			return nil
 		}
+		// bbolt 内部已经维护了 bucket 统计信息，这里直接复用，不必自己遍历计数。
 		count = bucket.Stats().KeyN
 		return nil
 	})
@@ -146,6 +154,7 @@ func (bpt *BPlusTree) Iterator(reverse bool) IndexIterator {
 		}
 		cursor := bucket.Cursor()
 		for k, v := cursor.First(); k != nil; k, v = cursor.Next() {
+			// 迭代时把 key/value 都拷贝出来，避免持有 bbolt 事务内存。
 			key := make([]byte, len(k))
 			val := make([]byte, len(v))
 			copy(key, k)
@@ -189,10 +198,12 @@ func (it *BPlusTreeIterator) Rewind() {
 // Seek 将迭代器移动到指定 key 的位置。
 func (it *BPlusTreeIterator) Seek(key []byte) {
 	if it.reverse {
+		// 反向快照是降序切片，因此使用 <= 作为命中条件。
 		it.currIndex = sort.Search(len(it.items), func(i int) bool {
 			return bytes.Compare(it.items[i].key, key) <= 0
 		})
 	} else {
+		// 正向快照保持升序，定位第一个 >= key 的位置。
 		it.currIndex = sort.Search(len(it.items), func(i int) bool {
 			return bytes.Compare(it.items[i].key, key) >= 0
 		})

@@ -10,18 +10,23 @@ import (
 // 返回值表示写入和索引更新是否成功；该方法会追加日志记录、更新内存索引并累加废弃空间统计。
 func (db *DB) Put(key, value []byte) error {
 	if len(key) == 0 {
+		// 根包约定空 key 视为非法输入，直接拒绝写入。
 		return ErrKeyNotFound
 	}
 
+	// 1. 把一次逻辑 Put 包装成普通日志记录。
+	// 这里的 key 会额外带上“非事务序列号”前缀，保持和批量事务同一套编码格式。
 	logRecord := &data.LogRecord{
 		Key:   logRecordKeyWithSeq(key, nonTransactionSeqNo),
 		Value: value,
 		Type:  data.LogRecordNormal,
 	}
+	// 2. 追加写入日志文件，拿到这条记录真实落盘的位置。
 	pos, err := db.appendLogRecordWithLock(logRecord)
 	if err != nil {
 		return err
 	}
+	// 3. 用新位置覆盖索引中的旧位置；如果 key 原来存在，旧记录就变成可回收垃圾。
 	if oldPos := db.index.Put(key, pos); oldPos != nil {
 		db.reclaimSize += int64(oldPos.Size)
 	}
@@ -33,22 +38,28 @@ func (db *DB) Put(key, value []byte) error {
 // 返回值表示删除记录写入和索引删除是否成功；该方法会增加可回收空间统计。
 func (db *DB) Delete(key []byte) error {
 	if len(key) == 0 {
+		// 删除和写入保持同一套输入约束，空 key 直接视为非法。
 		return ErrKeyNotFound
 	}
 	if pos := db.index.Get(key); pos == nil {
+		// 索引里查不到说明这个 key 当前本来就不存在，不需要再写墓碑记录。
 		return nil
 	}
 
+	// 1. 删除不是立即抹掉旧 value，而是追加一条“删除类型”的墓碑记录。
 	logRecord := &data.LogRecord{
 		Key:  logRecordKeyWithSeq(key, nonTransactionSeqNo),
 		Type: data.LogRecordDeleted,
 	}
+	// 2. 先把墓碑记录落盘，确保即使进程崩溃，恢复时也能知道这个 key 已被删除。
 	pos, err := db.appendLogRecordWithLock(logRecord)
 	if err != nil {
 		return err
 	}
+	// 3. 删除记录本身也占用了磁盘空间，后续 merge 可以把它回收掉。
 	db.reclaimSize += int64(pos.Size)
 
+	// 4. 再把内存索引里的 key 删掉，并把原来那条旧 value 记录也计入可回收空间。
 	oldPos, ok := db.index.Delete(key)
 	if ok {
 		db.reclaimSize += int64(oldPos.Size)
@@ -73,10 +84,12 @@ func (db *DB) appendLogRecord(logRecord *data.LogRecord) (*data.LogRecordPos, er
 
 	// 2.1 当前文件写满时，先把旧活跃文件落盘并转入 oldfiles，再切换到新文件继续写。
 	if db.activeFile.WriteOff+size > db.options.DataFileSize {
+		// 旧活跃文件在转为只读旧文件前先做一次刷盘，减少切文件时的数据丢失窗口。
 		if err := db.activeFile.Sync(); err != nil {
 			return nil, err
 		}
 
+		// oldfiles 保存所有已经封存的数据文件，读路径会通过 fileID 从这里回查旧记录。
 		db.oldfiles[db.activeFile.FileID] = db.activeFile
 		if err := db.setActiveDataFile(); err != nil {
 			return nil, err
@@ -90,9 +103,11 @@ func (db *DB) appendLogRecord(logRecord *data.LogRecord) (*data.LogRecordPos, er
 	if err := db.activeFile.Write(encodedStr); err != nil {
 		return nil, err
 	}
+	// bytesWrite 记录“自上次显式 Sync 之后累计写了多少字节”。
 	db.bytesWrite += uint(size)
 	var needSync = db.options.SyncWrites
 	if !needSync && db.options.BytesPerSync > 0 && db.bytesWrite >= db.options.BytesPerSync {
+		// 当累计写入达到 BytesPerSync 阈值时，触发一次批量刷盘。
 		needSync = true
 	}
 
@@ -101,6 +116,7 @@ func (db *DB) appendLogRecord(logRecord *data.LogRecord) (*data.LogRecordPos, er
 			return nil, err
 		}
 		if db.bytesWrite > 0 {
+			// 已经完成刷盘后，把累计字节数归零，开始统计下一轮。
 			db.bytesWrite = 0
 		}
 	}
@@ -116,6 +132,7 @@ func (db *DB) appendLogRecord(logRecord *data.LogRecord) (*data.LogRecordPos, er
 
 // appendLogRecordWithLock 在持有写锁的情况下追加日志记录，避免多个写入并发篡改活跃文件状态。
 func (db *DB) appendLogRecordWithLock(logRecord *data.LogRecord) (*data.LogRecordPos, error) {
+	// 活跃文件切换、写偏移推进和 bytesWrite 统计都属于共享可变状态，必须串行化。
 	db.mu.Lock()
 	defer db.mu.Unlock()
 	return db.appendLogRecord(logRecord)

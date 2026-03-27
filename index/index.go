@@ -31,10 +31,13 @@ type Indexer interface {
 func NewIndexer(idextype IndexerType, dirPath string, sync bool) Indexer {
 	switch idextype {
 	case BTreeIndex:
+		// 纯内存 BTree，简单直接。
 		return NewBTree()
 	case ARTreeIndex:
+		// 纯内存自适应基数树，适合按字节前缀组织 key。
 		return NewARTree()
 	case BPlusTreeIndex:
+		// 持久化 B+Tree，索引结构单独落盘。
 		return NewBPlusTree(dirPath, sync)
 	default:
 		panic("unsupported index type")
@@ -49,6 +52,7 @@ type Item struct {
 
 // Less 定义 BTree 中 Item 的有序比较规则（按 key 字典序）。
 func (i *Item) Less(than btree.Item) bool {
+	// BTree 通过 Less 决定节点内排序规则，这里按 key 的字典序排列。
 	return string(i.key) < string(than.(*Item).key)
 }
 

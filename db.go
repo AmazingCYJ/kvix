@@ -10,7 +10,11 @@ import (
 )
 
 const (
-	seqNoKey     = "seq.no"
+	// seqNoKey 是事务序列号文件里使用的固定键名。
+	// 数据库关闭时会把当前最大的事务序列号以这条记录形式写入 seq-no 文件。
+	seqNoKey = "seq.no"
+	// fileLockName 是数据库目录级锁文件名。
+	// 只要这个锁被某个进程持有，其他进程就不能再打开同一目录。
 	fileLockName = "flock"
 )
 

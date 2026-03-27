@@ -40,8 +40,10 @@ func (rds *RedisDataStore) HSet(key, field, value []byte) (bool, error) {
 		next = *meta
 		dataKey := hashDataKey(key, next.version, field)
 		if _, err := rds.db.Get(dataKey); err == nil {
+			// 能读到旧 field，说明这次只是覆盖写，不增加 field 数量。
 			isNewField = false
 		} else if errors.Is(err, common.ErrKeyNotFound) {
+			// 当前版本下不存在这个 field，说明这是新增字段。
 			isNewField = true
 		} else {
 			return false, err
@@ -83,6 +85,7 @@ func (rds *RedisDataStore) HGet(key, field []byte) ([]byte, error) {
 		return nil, err
 	}
 	if meta == nil {
+		// hash 元数据不存在，说明整个逻辑 key 不存在。
 		return nil, common.ErrKeyNotFound
 	}
 	dataKey := hashDataKey(key, meta.version, field)
@@ -108,6 +111,7 @@ func (rds *RedisDataStore) HDel(key, field []byte) (bool, error) {
 	dataKey := hashDataKey(key, meta.version, field)
 	if _, err := rds.db.Get(dataKey); err != nil {
 		if errors.Is(err, common.ErrKeyNotFound) {
+			// field 本来不存在时，不需要构造删除批次。
 			return false, nil
 		}
 		return false, err
@@ -119,10 +123,12 @@ func (rds *RedisDataStore) HDel(key, field []byte) (bool, error) {
 	}
 
 	if meta.size <= 1 {
+		// 最后一个 field 删除后，整个 hash 逻辑 key 也随之消失。
 		if err := wb.Delete(metaKey(key)); err != nil {
 			return false, err
 		}
 	} else {
+		// 否则只需要把 size 减 1，保留同一版本下的其他 field。
 		next := *meta
 		next.size--
 		if err := wb.Put(metaKey(key), encodeMetadata(next)); err != nil {
@@ -143,6 +149,7 @@ func (rds *RedisDataStore) HExists(key, field []byte) (bool, error) {
 		return false, err
 	}
 	if meta == nil {
+		// 整个 hash 不存在，自然也不可能包含这个 field。
 		return false, nil
 	}
 	dataKey := hashDataKey(key, meta.version, field)
@@ -173,6 +180,7 @@ func (rds *RedisDataStore) loadHashMetadata(key []byte) (*metadata, error) {
 		return nil, err
 	}
 	if meta == nil {
+		// 返回 nil 而不是错误，让上层自己决定“不存在”在当前命令里的语义。
 		return nil, nil
 	}
 	if err := expectType(meta, redisTypeHash); err != nil {
