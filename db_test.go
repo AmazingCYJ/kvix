@@ -144,6 +144,46 @@ func TestOpenReloadIndexFromDataFiles(t *testing.T) {
 	}
 }
 
+func TestOpenBPlusTreeWithMMapAtStartupCanWriteAfterReopen(t *testing.T) {
+	dir := t.TempDir()
+	opts := common.Options{
+		DirPath:       dir,
+		DataFileSize:  1024 * 1024,
+		IndexType:     common.BPlusTreeIndex,
+		SyncWrites:    true,
+		MMapAtStartup: true,
+	}
+
+	db1, err := Open(opts)
+	if err != nil {
+		t.Fatalf("Open(first) error = %v", err)
+	}
+	if err := db1.Put([]byte("k1"), []byte("v1")); err != nil {
+		t.Fatalf("Put(first) error = %v", err)
+	}
+	if err := db1.Close(); err != nil {
+		t.Fatalf("Close(first) error = %v", err)
+	}
+
+	db2, err := Open(opts)
+	if err != nil {
+		t.Fatalf("Open(reopen) error = %v", err)
+	}
+	defer func() { _ = db2.Close() }()
+
+	if err := db2.Put([]byte("k2"), []byte("v2")); err != nil {
+		t.Fatalf("Put(after reopen) error = %v", err)
+	}
+
+	value, err := db2.Get([]byte("k2"))
+	if err != nil {
+		t.Fatalf("Get(k2) error = %v", err)
+	}
+	if string(value) != "v2" {
+		t.Fatalf("Get(k2) = %q, want %q", string(value), "v2")
+	}
+}
+
 func TestIteratorForward(t *testing.T) {
 	dir := t.TempDir()
 	db, err := Open(testOptions(dir))

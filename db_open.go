@@ -92,6 +92,13 @@ func Open(options Options) (*DB, error) {
 		if err := db.logSeqNo(); err != nil {
 			return nil, err
 		}
+		if db.options.MMapAtStartup {
+			// B+Tree 虽然不需要重放内存索引，但如果启动时用 mmap 打开了数据文件，
+			// 恢复结束后仍然必须切回标准文件 IO，否则后续写入会直接失败。
+			if err := db.resetIoType(); err != nil {
+				return nil, err
+			}
+		}
 		if db.activeFile != nil {
 			// B+Tree 模式下索引不需要重放日志来恢复，但活跃文件下一次写入位置仍然要校正到文件末尾。
 			size, err := db.activeFile.IoManager.Size()
