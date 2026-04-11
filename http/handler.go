@@ -142,7 +142,11 @@ func (s *server) listKeys(c *fiber.Ctx) error {
 }
 
 func (s *server) stat(c *fiber.Ctx) error {
-	return writeJSON(c, fiber.StatusOK, "ok", s.db.Stat())
+	stat, err := s.db.Stat()
+	if err != nil {
+		return err
+	}
+	return writeJSON(c, fiber.StatusOK, "ok", stat)
 }
 
 func intPtr(v int) *int {

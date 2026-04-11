@@ -2,7 +2,7 @@ package index
 
 import (
 	"errors"
-	. "kvix/common"
+	"kvix/common"
 	"kvix/data"
 	"testing"
 
@@ -11,9 +11,9 @@ import (
 
 func openTestBPlusTree(t *testing.T) *BPlusTree {
 	t.Helper()
-	bpt := NewBPlusTree(t.TempDir(), false)
-	if bpt == nil {
-		t.Fatalf("NewBPlusTree() returned nil")
+	bpt, err := NewBPlusTree(t.TempDir(), false)
+	if err != nil {
+		t.Fatalf("NewBPlusTree() error = %v", err)
 	}
 	t.Cleanup(func() {
 		_ = bpt.Close()
@@ -219,9 +219,9 @@ func TestBPlusTreeIteratorRewindAndClose(t *testing.T) {
 
 func TestBPlusTreeReopenPersistence(t *testing.T) {
 	dir := t.TempDir()
-	bpt := NewBPlusTree(dir, false)
-	if bpt == nil {
-		t.Fatalf("NewBPlusTree() returned nil")
+	bpt, err := NewBPlusTree(dir, false)
+	if err != nil {
+		t.Fatalf("NewBPlusTree() error = %v", err)
 	}
 
 	putBPlusTestItem(t, bpt, "persist-a", 1, 11)
@@ -233,9 +233,9 @@ func TestBPlusTreeReopenPersistence(t *testing.T) {
 		t.Fatalf("Close(first) error = %v", err)
 	}
 
-	bpt2 := NewBPlusTree(dir, false)
-	if bpt2 == nil {
-		t.Fatalf("NewBPlusTree(reopen) returned nil")
+	bpt2, err := NewBPlusTree(dir, false)
+	if err != nil {
+		t.Fatalf("NewBPlusTree(reopen) error = %v", err)
 	}
 	t.Cleanup(func() { _ = bpt2.Close() })
 
@@ -249,7 +249,10 @@ func TestBPlusTreeReopenPersistence(t *testing.T) {
 }
 
 func TestBPlusTreeFactoryCreation(t *testing.T) {
-	idx := NewIndexer(BPlusTreeIndex, t.TempDir(), false)
+	idx, err := NewIndexer(common.BPlusTreeIndex, t.TempDir(), false)
+	if err != nil {
+		t.Fatalf("NewIndexer(BPlusTreeIndex) error = %v", err)
+	}
 	if idx == nil {
 		t.Fatalf("NewIndexer(BPlusTreeIndex) = nil, want non-nil")
 	}

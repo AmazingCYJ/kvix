@@ -211,7 +211,7 @@ func TestIteratorForward(t *testing.T) {
 
 	var gotKeys []string
 	var gotValues []string
-	for it.Rewind(); it.Vaild(); it.Next() {
+	for it.Rewind(); it.Valid(); it.Next() {
 		key := it.Key()
 		value, err := it.Value()
 		if err != nil {
@@ -264,7 +264,7 @@ func TestIteratorReverse(t *testing.T) {
 	defer it.Close()
 
 	var gotKeys []string
-	for it.Rewind(); it.Vaild(); it.Next() {
+	for it.Rewind(); it.Valid(); it.Next() {
 		gotKeys = append(gotKeys, string(it.Key()))
 	}
 
@@ -308,7 +308,7 @@ func TestIteratorWithPrefix(t *testing.T) {
 	defer it.Close()
 
 	var gotKeys []string
-	for it.Rewind(); it.Vaild(); it.Next() {
+	for it.Rewind(); it.Valid(); it.Next() {
 		gotKeys = append(gotKeys, string(it.Key()))
 	}
 
@@ -350,19 +350,19 @@ func TestIteratorSeek(t *testing.T) {
 
 	// Seek to "c", should find it
 	it.Seek([]byte("c"))
-	if !it.Vaild() || string(it.Key()) != "c" {
-		t.Fatalf("Seek(c) key = %q, valid = %v, want key c and valid true", it.Key(), it.Vaild())
+	if !it.Valid() || string(it.Key()) != "c" {
+		t.Fatalf("Seek(c) key = %q, valid = %v, want key c and valid true", it.Key(), it.Valid())
 	}
 
 	// Seek to "b", should find closest >= "b" which is "c"
 	it.Seek([]byte("b"))
-	if !it.Vaild() || string(it.Key()) != "c" {
-		t.Fatalf("Seek(b) key = %q, valid = %v, want key c and valid true", it.Key(), it.Vaild())
+	if !it.Valid() || string(it.Key()) != "c" {
+		t.Fatalf("Seek(b) key = %q, valid = %v, want key c and valid true", it.Key(), it.Valid())
 	}
 
 	// Seek to "z", should be invalid
 	it.Seek([]byte("z"))
-	if it.Vaild() {
+	if it.Valid() {
 		t.Fatalf("Seek(z) valid = true, want false")
 	}
 }
@@ -569,12 +569,15 @@ func TestStatTracksOldDataOnPutAndDelete(t *testing.T) {
 		t.Fatalf("Put(first) error = %v", err)
 	}
 
-	st1 := db.Stat()
+	st1, err := db.Stat()
+	if err != nil {
+		t.Fatalf("Stat() error = %v", err)
+	}
 	if st1.KeyNum != 1 {
 		t.Fatalf("Stat().KeyNum after first put = %d, want 1", st1.KeyNum)
 	}
-	if st1.ReclaimbleSize != 0 {
-		t.Fatalf("Stat().ReclaimbleSize after first put = %d, want 0", st1.ReclaimbleSize)
+	if st1.ReclaimableSize != 0 {
+		t.Fatalf("Stat().ReclaimableSize after first put = %d, want 0", st1.ReclaimableSize)
 	}
 
 	posBeforeOverwrite := db.index.Get(key)
@@ -586,11 +589,14 @@ func TestStatTracksOldDataOnPutAndDelete(t *testing.T) {
 		t.Fatalf("Put(overwrite) error = %v", err)
 	}
 
-	st2 := db.Stat()
+	st2, err := db.Stat()
+	if err != nil {
+		t.Fatalf("Stat() error = %v", err)
+	}
 	if st2.KeyNum != 1 {
 		t.Fatalf("Stat().KeyNum after overwrite = %d, want 1", st2.KeyNum)
 	}
-	putDelta := st2.ReclaimbleSize - st1.ReclaimbleSize
+	putDelta := st2.ReclaimableSize - st1.ReclaimableSize
 	if putDelta != int64(posBeforeOverwrite.Size) {
 		t.Fatalf("reclaim delta after overwrite = %d, want %d", putDelta, posBeforeOverwrite.Size)
 	}
@@ -610,11 +616,14 @@ func TestStatTracksOldDataOnPutAndDelete(t *testing.T) {
 		t.Fatalf("Delete(name) error = %v", err)
 	}
 
-	st3 := db.Stat()
+	st3, err := db.Stat()
+	if err != nil {
+		t.Fatalf("Stat() error = %v", err)
+	}
 	if st3.KeyNum != 0 {
 		t.Fatalf("Stat().KeyNum after delete = %d, want 0", st3.KeyNum)
 	}
-	deleteDelta := st3.ReclaimbleSize - st2.ReclaimbleSize
+	deleteDelta := st3.ReclaimableSize - st2.ReclaimableSize
 	wantDeleteDelta := int64(posBeforeDelete.Size) + deleteRecordSize
 	if deleteDelta != wantDeleteDelta {
 		t.Fatalf("reclaim delta after delete = %d, want %d", deleteDelta, wantDeleteDelta)

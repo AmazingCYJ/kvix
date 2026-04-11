@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+
 	common "kvix/common"
 
 	"github.com/gofiber/fiber/v2"
@@ -161,7 +163,7 @@ func (s *server) lookupZSetScore(key, member []byte) (float64, bool, error) {
 	if err == nil {
 		return score, true, nil
 	}
-	if err == common.ErrKeyNotFound {
+	if errors.Is(err, common.ErrKeyNotFound) {
 		return 0, false, nil
 	}
 	return 0, false, mapDomainError(err)
