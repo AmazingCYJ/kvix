@@ -6,11 +6,11 @@ import "github.com/gofiber/fiber/v2"
 type apiResponse struct {
 	Code    int         `json:"code"`
 	Message string      `json:"message"`
-	Data    interface{} `json:"data,omitempty"`
+	Data    any         `json:"data,omitempty"`
 }
 
 // writeJSON 统一输出固定结构的 JSON 响应。
-func writeJSON(c *fiber.Ctx, status int, message string, data interface{}) error {
+func writeJSON(c *fiber.Ctx, status int, message string, data any) error {
 	return c.Status(status).JSON(apiResponse{
 		Code:    status,
 		Message: message,

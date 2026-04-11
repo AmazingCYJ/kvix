@@ -205,7 +205,7 @@ func (rds *RedisDataStore) ZRange(key []byte, start, stop int64) ([][]byte, erro
 	result := make([][]byte, 0, int(to-from+1))
 	expected := int(to - from + 1)
 	pos := int64(0)
-	for it.Rewind(); it.Vaild(); it.Next() {
+	for it.Rewind(); it.Valid(); it.Next() {
 		fullKey := it.Key()
 		base := len(prefix) + zsetScoreEncodedSize
 		if len(fullKey) <= base {

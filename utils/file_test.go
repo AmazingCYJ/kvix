@@ -67,18 +67,14 @@ func TestGetDirSize(t *testing.T) {
 }
 
 func TestGetDiskFreeSpace(t *testing.T) {
-	got, err := GetDiskFreeSpace()
+	dir := t.TempDir()
+	got, err := GetDiskFreeSpace(dir)
 	if err != nil {
 		t.Fatalf("GetDiskFreeSpace() error = %v", err)
 	}
 
-	wd, err := syscall.Getwd()
-	if err != nil {
-		t.Fatalf("syscall.Getwd() error = %v", err)
-	}
-
 	var stat syscall.Statfs_t
-	if err := syscall.Statfs(wd, &stat); err != nil {
+	if err := syscall.Statfs(dir, &stat); err != nil {
 		t.Fatalf("syscall.Statfs() error = %v", err)
 	}
 

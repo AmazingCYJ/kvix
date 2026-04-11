@@ -174,7 +174,7 @@ func (rds *RedisDataStore) SMembers(key []byte) ([][]byte, error) {
 	it := rds.db.NewIterator(common.IteratorOptions{Prefix: prefix})
 	defer it.Close()
 	members := make([][]byte, 0, meta.size)
-	for it.Rewind(); it.Vaild(); it.Next() {
+	for it.Rewind(); it.Valid(); it.Next() {
 		fullKey := it.Key()
 		if len(fullKey) < len(prefix)+lenMarkerSize {
 			continue

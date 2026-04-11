@@ -110,8 +110,9 @@ func TestWriteBatchDeleteMissingKey(t *testing.T) {
 
 	wb := db.NewWriteBatch(common.DefaultWriteBatchOptions)
 	err = wb.Delete([]byte("missing"))
-	if !errors.Is(err, common.ErrKeyNotFound) {
-		t.Fatalf("Delete(missing) error = %v, want ErrKeyNotFound", err)
+	// 删除不存在的 key 应返回 nil（幂等语义），与 DB.Delete 行为一致。
+	if err != nil {
+		t.Fatalf("Delete(missing) error = %v, want nil", err)
 	}
 }
 
